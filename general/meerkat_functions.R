@@ -1269,6 +1269,52 @@ bin.plot <- function(xvals, yvals, xbins, test.stat = 'mean', error.bar.quantile
   return(out)
 }
 
+#Parse call lables into a set of 10 basic call types:
+# cc, cchyb (hybrid cc), agg, soc, chat, mo, ld, chat, al, oth (other)
+
+#Rules:
+#a "hierarchy" of call priority (when hybrids exist, they get classified with the higher up category)
+#exception: any hybrids containing cc will get classed as cchyb (because there are a lot of these)
+# hierarchy: cc, al, ld, mo, chat, soc, agg, s, oth
+
+#INPUTS:
+# call.labels: vector of character strings giving call labels (should be input from file 2017_ALL_CALLS_SYNCHED.csv or 2019_ALL_CALLS_SYNCHED.csv)
+#OUTPUTS:
+# calls.simple: vector of character strings giving simple call types 
+parse.meerkat.call.labels.to.simple.types <- function(call.labels){
+
+  #convert labels to lower case
+  call.labels <- tolower(call.labels)
+  
+  #first assume all calls are other
+  calls.simple <- rep('oth',length(call.labels))
+  
+  #find the various call types
+  calls.simple[which(call.labels %in% c('s','sn','sx','sc','s?','snx'))] <- 's'
+  calls.simple[which(grepl('ag',call.labels,ignore.case=T))] <- 'agg'
+  calls.simple[which(grepl('so',call.labels,ignore.case=T))] <- 'soc'
+  calls.simple[which(grepl('chat',call.labels,ignore.case=T))] <- 'chat'
+  calls.simple[which(grepl('mo',call.labels,ignore.case=T))] <- 'mo'
+  calls.simple[which(grepl('ld',call.labels,ignore.case=T))] <- 'ld'
+  calls.simple[which(grepl('lead',call.labels,ignore.case=T))] <- 'ld'
+  calls.simple[which(grepl('al',call.labels,ignore.case=T))] <- 'al'
+  calls.simple[which(grepl('cc',call.labels,ignore.case=T))] <- 'cchyb'
+  calls.simple[which(call.labels %in% c('cc','cc*','cc+','ccx','ccc','c'))] <- 'cc'
+  
+  #synch calls, beeps, skips, and various other non-call things get classed as NA
+  calls.simple[which(grepl('sync',call.labels,ignore.case=T))] <- NA
+  calls.simple[which(grepl('beep',call.labels,ignore.case=T))] <- NA
+  calls.simple[which(grepl('skip',call.labels,ignore.case=T))] <- NA
+  calls.simple[which(grepl('start',call.labels,ignore.case=T))] <- NA
+  calls.simple[which(grepl('stop',call.labels,ignore.case=T))] <- NA
+  calls.simple[which(grepl('digging',call.labels,ignore.case=T))] <- NA
+  calls.simple[which(grepl('eating',call.labels,ignore.case=T))] <- NA
+  calls.simple[which(grepl('pause',call.labels,ignore.case=T))] <- NA
+  
+  return(calls.simple)
+  
+}
+
 
 
 
