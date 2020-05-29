@@ -22,6 +22,9 @@ year <- 2019
 #directory where data is stored
 datadir <- '~/Dropbox/meerkats/meerkats_shared/data' 
 
+#directory where code is stored
+codedir <- '~/Dropbox/code_ari/move_comm_analysis/'
+
 #bandwidth of smoothing kernel (default 0.1)
 bw <- .1 
 
@@ -47,8 +50,7 @@ self.responses <- FALSE
 #whether to use nonfocal calls within the same file as the 'caller' with the individual whose reocrding it is as 'respodner'
 #this is mainly to check that the result is not driven by some weird synching issues, because we use the data frome the same recording
 #normally this should be set to FALSE
-use.nonfoc.as.triggers <- FALSE 
-
+use.nonfoc.as.triggers <- TRUE 
 
 #---------------------SETUP-----------------------
 
@@ -56,7 +58,6 @@ use.nonfoc.as.triggers <- FALSE
 audio.file <- paste(datadir, '/', year, '_ALL_CALLS_SYNCHED.csv',sep='')
 gps.file <- paste(datadir ,'/', 'HM_COORDINATES_', year, '_sessions.RData', sep = '')
 ind.file <- paste(datadir, '/', 'HM_INDIVIDUAL_INFO_', year,'.txt', sep = '')
-
 
 #------------------LIBRARIES----------------------
 
@@ -76,30 +77,13 @@ calls.all <- read.csv(audio.file, header=T, sep='\t', stringsAsFactors=F)
 load(gps.file)
 ind.info <- read.csv(ind.file,sep='\t')
 
+#source functions
+source(paste(codedir,'/general/meerkat_functions.R',sep=''))
+
 #--------------------PREPROCESS-------------------------------
 
-#parse call types
-#add a column for simple call type (parse calls in a sort of hierarchical way - should discuss this in more detail)
-calls.all$callType <- tolower(calls.all$callType)
-calls.all$callSimple <- 'oth'
-calls.all$callSimple[which(calls.all$callType %in% c('s','sn','sx','sc','s?','snx'))] <- 's'
-calls.all$callSimple[which(grepl('ag',calls.all$callType,ignore.case=T))] <- 'agg'
-calls.all$callSimple[which(grepl('so',calls.all$callType,ignore.case=T))] <- 'soc'
-calls.all$callSimple[which(grepl('chat',calls.all$callType,ignore.case=T))] <- 'chat'
-calls.all$callSimple[which(grepl('mo',calls.all$callType,ignore.case=T))] <- 'mo'
-calls.all$callSimple[which(grepl('ld',calls.all$callType,ignore.case=T))] <- 'ld'
-calls.all$callSimple[which(grepl('lead',calls.all$callType,ignore.case=T))] <- 'ld'
-calls.all$callSimple[which(grepl('al',calls.all$callType,ignore.case=T))] <- 'al'
-calls.all$callSimple[which(grepl('cc',calls.all$callType,ignore.case=T))] <- 'cchyb'
-calls.all$callSimple[which(calls.all$callType %in% c('cc','cc*','cc+','ccx','ccc','c'))] <- 'cc'
-calls.all$callSimple[which(grepl('sync',calls.all$callType,ignore.case=T))] <- NA
-calls.all$callSimple[which(grepl('beep',calls.all$callType,ignore.case=T))] <- NA
-calls.all$callSimple[which(grepl('skip',calls.all$callType,ignore.case=T))] <- NA
-calls.all$callSimple[which(grepl('start',calls.all$callType,ignore.case=T))] <- NA
-calls.all$callSimple[which(grepl('stop',calls.all$callType,ignore.case=T))] <- NA
-calls.all$callSimple[which(grepl('digging',calls.all$callType,ignore.case=T))] <- NA
-calls.all$callSimple[which(grepl('eating',calls.all$callType,ignore.case=T))] <- NA
-calls.all$callSimple[which(grepl('pause',calls.all$callType,ignore.case=T))] <- NA
+#add a column for simple call type (parse calls in a hierarchical way - see function description
+calls.all$callSimple <- parse.meerkat.call.labels.to.simple.types(calls.all$callType)
 
 #convert times to POSIXlt
 calls.all$t0 <- as.POSIXlt(calls.all$t0GPS_UTC, tz = 'UTC')
