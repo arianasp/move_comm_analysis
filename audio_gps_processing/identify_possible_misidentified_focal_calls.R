@@ -4,14 +4,14 @@
 #By default, the script just plays you the calls in sequence, however you can also choose to generate a spectrogram for further investigation
 #You can quit at any time and your labels will be saved
 #At the moment I haven't implemented any way to go back and correct things if you make a mistake, so just try not to make mistakes!
-#But in case you notice you've made a mistake, note down the two id numbers shown when each pair of calls is played and save them somewhere - this will make it easy to go back and fix it later
+#But in case you notice you've made a mistake, note down the two id numbers shown when that pair of calls is played and save them somewhere - this will make it easy to go back and fix it later
 
 #---------------- INSTRUCTIONS FOR HOW TO RUN ------------------
 #In the next section, enter in the appropriate parameters for each line marked "INPUT"
-#After you have completed this, save the file.
+#After you have completed this, save the script
 #To run, first type into the R console: setwd(DIR) where DIR is the directory in which you've stored the code
 #Then, type into the R consolte: source('identify_possible_misidentified_focal_calls.R') to run the script
-#Note that the script can't be nicely run by command enter because of the interactive bits, so that's why you have to use the 'source' way instead.
+#Note that the script can't be nicely run by shift-enter because of the interactive bits, so that's why you have to use the 'source' way instead.
 
 #----------------PARAMETERS--------------------
 
@@ -23,12 +23,11 @@ name <- 'ari'
 #INPUT: which year's data to use
 year <- 2019 
 
-#INPUT: directory where call match data are stored
+#INPUT: directory where call match data are/will be stored
 match.save.dir <- '~/Dropbox/meerkats/meerkats_shared/ari' 
 
 #INPUT: directories where data is stored
 label.dir <- '~/Dropbox/meerkats/meerkats_shared/data'
-label.file <- paste(label.dir,'/',year, '_ALL_CALLS_SYNCHED.csv', sep = '')
 audio.dir <- paste('/Volumes/Public/MEERKAT_RAW_DATA/', year, sep='')
 
 #INPUT: wav player - this might be mac/pc difference but /usr/bin/afplay works for me
@@ -121,6 +120,9 @@ play.compare.calls <- function(matches, labels.to.wav.files, i, pad=.1){
 
 
 #---------------SETUP---------------------
+
+#label file name
+label.file <- paste(label.dir,'/',year, '_ALL_CALLS_SYNCHED.csv', sep = '')
 
 #whether to load matches or generate them
 load.matches <- T
@@ -296,13 +298,14 @@ if(ready == 'y'){
   for(i in 1:length(idxs)){
     
     row <- idxs[i]
-    
-    print(paste('now viewing calls: ', matches$unique.id.a[row], ' AND ' ,matches$unique.id.b[row], sep = ''))
-    
+
     #if the call pair was already checked, skip it
     if(!is.na(matches$manual.check.result[row])){
       next
     } else{
+      
+      print(paste('now viewing calls: ', matches$unique.id.a[row], ' AND ' ,matches$unique.id.b[row], sep = ''))
+      
       
       #compare calls and store output in matches data frame
       matches$manual.check.result[row] <- play.compare.calls(matches, labels.to.wav.files, row)
