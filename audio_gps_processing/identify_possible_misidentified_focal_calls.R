@@ -1,3 +1,5 @@
+#TODO: Distance threshold 10 m
+
 #This script identifies possible pairs of calls labeled as 'focal' on different devices that might 'match' (i.e. actually be the same call)
 #It then takes you through these matches and you can manually identify whether they are, in fact, the same
 #After some setup, the script will begin taking you through pairs of calls and you will be able to interactively label them as matches or not (or unsure)
@@ -79,40 +81,52 @@ play.compare.calls <- function(matches, labels.to.wav.files, i, pad=.1){
       wav.b <- downsample(wav.b, 8000)
     }
     
+    if(length(dev.list() > 20)){
+      dev.off(dev.list()["RStudioGD"])
+    }
+    
+    par(mfrow=c(1,2), mar = c(1,1,1,1))
+    
+    #first spectrogram
+    spec.a <- spectro(wav.a, wl = specwin, ovlp=95, flog=T, plot = F, wn = 'blackman')
+    image.plot(t(spec.a$amp), x = spec.a$time, y = spec.a$freq, horizontal = T, xlab = 'n', ylab = 'n', col = viridis(1024))
+    start.frac.a <- pad / tot.len
+    end.frac.a <- (tf.a - t0.a - pad) / tot.len 
+    start.spec.a <- start.frac.a * max(spec.a$time)
+    end.spec.a <- end.frac.a * max(spec.a$time)
+    abline(v = c(start.spec.a, end.spec.a), lwd = 2, col = 'black', lty = 2)
+    
+    #second spectrogram
+    spec.b <- spectro(wav.b, wl = specwin, ovlp=95, flog=T, plot = F, wn = 'blackman')
+    image.plot(t(spec.b$amp), x = spec.b$time, y = spec.b$freq, horizontal = T, xlab = 'n', ylab = 'n', col = viridis(1024))
+    start.frac.b <- pad / tot.len
+    end.frac.b <- (tf.b - t0.b - pad) / tot.len
+    start.spec.b <- start.frac.b * max(spec.b$time)
+    end.spec.b <- end.frac.b * max(spec.b$time)
+    abline(v = c(start.spec.b, end.spec.b), lwd = 2, col = 'black', lty = 2)
+    
     play(wav.a)
     play(wav.b)
     
-    cat('Do they sound the same? (y = yes, n = no, u = unsure, a = play again, s = draw spectrogram, q = save and quit)')
+    cat('Do they look / sound the same? (y = yes, n = no, u = unsure, a = play again, s = draw spectrogram, q = save and quit)')
     user.input <- readline()
     
     if(user.input %in% c('y','n','u')){
       play.again <- F
-      return(user.input)
+      
+      if(user.input == 'y'){
+        cat('Which one do you think is the focal? (1 = left/first, 2 = right/second)')
+        whichfoc <- readline()
+        out <- paste(user.input, whichfoc, sep = '_')
+        return(out)
+      } else{
+      
+      
+        return(user.input)
+      }
     } else if(user.input == 'q'){
       return(NA)
-    } else if(user.input == 's'){
-      quartz(width = 16, height = 6)
-      par(mfrow=c(1,2), mar = c(1,1,1,1))
-      
-      #first spectrogram
-      spec.a <- spectro(wav.a, wl = specwin, ovlp=95, flog=T, plot = F, wn = 'blackman')
-      image.plot(t(spec.a$amp), x = spec.a$time, y = spec.a$freq, horizontal = T, xlab = 'n', ylab = 'n', col = viridis(1024))
-      start.frac.a <- pad / tot.len
-      end.frac.a <- (tf.a - t0.a - pad) / tot.len 
-      start.spec.a <- start.frac.a * max(spec.a$time)
-      end.spec.a <- end.frac.a * max(spec.a$time)
-      abline(v = c(start.spec.a, end.spec.a), lwd = 2, col = 'black', lty = 2)
-      
-      #second spectrogram
-      spec.b <- spectro(wav.b, wl = specwin, ovlp=95, flog=T, plot = F, wn = 'blackman')
-      image.plot(t(spec.b$amp), x = spec.b$time, y = spec.b$freq, horizontal = T, xlab = 'n', ylab = 'n', col = viridis(1024))
-      start.frac.b <- pad / tot.len
-      end.frac.b <- (tf.b - t0.b - pad) / tot.len
-      start.spec.b <- start.frac.b * max(spec.b$time)
-      end.spec.b <- end.frac.b * max(spec.b$time)
-      abline(v = c(start.spec.b, end.spec.b), lwd = 2, col = 'black', lty = 2)
-      
-    }
+    } 
     
   }
   
@@ -152,7 +166,9 @@ if(!load.matches){
 }
 
 #get paths to all audio files in that year
-all.audio.files <- list.files(path = audio.dir, recursive = T, pattern = '*.wav', ignore.case = T)
+if(!load.matches){
+  all.audio.files <- list.files(path = audio.dir, recursive = T, pattern = '*.wav', ignore.case = T)
+}
 
 #convert t0 and tf to number
 if(!load.matches){
@@ -321,7 +337,7 @@ if(ready == 'y'){
   saveorno <- readline()
   
   if(saveorno == 'y'){
-    save(file=match.save.file,list=c('matches', 'calls', 'time.thresh','dur.thresh','pad','year','labels.to.wav.files','idxs'))
+    save(file=match.save.file,list=c('matches', 'calls', 'time.thresh','dur.thresh','pad','year','labels.to.wav.files','idxs','all.audio.files'))
     print('successfully saved to: ')
     print(match.save.file)
   } else{
