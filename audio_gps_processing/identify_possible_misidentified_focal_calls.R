@@ -122,8 +122,13 @@ play.compare.calls <- function(matches, labels.to.wav.files, i, pad=.1){
       play.again <- F
       
       if(user.input == 'y'){
-        cat('Which one do you think is the focal? (1 = left/first, 2 = right/second)')
+        cat('Which one do you think is the focal? (1 = left/first, 2 = right/second), or a to replay)')
         whichfoc <- readline()
+        while(whichfoc == 'a'){
+          play(wav.a)
+          play(wav.b)
+          whichfoc <- readline()
+        }
         out <- paste(user.input, whichfoc, sep = '_')
         return(out)
       } else{
