@@ -1,5 +1,3 @@
-#TODO: Distance threshold 10 m
-
 #This script identifies possible pairs of calls labeled as 'focal' on different devices that might 'match' (i.e. actually be the same call)
 #It then takes you through these matches and you can manually identify whether they are, in fact, the same
 #After some setup, the script will begin taking you through pairs of calls and you will be able to interactively label them as matches or not (or unsure)
