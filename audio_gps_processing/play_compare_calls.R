@@ -10,7 +10,7 @@ library(oce)
 
 #--------------FUNCTIONS------------------------
 #extract and line up spectrograms of matched calls for visual and audio comparison
-play.compare.calls <- function(matches, labels.to.wav.files, i, pad=.1){
+play.compare.calls <- function(matches, labels.to.wav.files, i, pad=.1, feedback = T){
 
   play.again <- T
   while(play.again){
@@ -62,32 +62,35 @@ play.compare.calls <- function(matches, labels.to.wav.files, i, pad=.1){
     play(wav.a)
     play(wav.b)
 
-    cat('Do they look / sound the same? (y = yes, n = no, u = unsure, a = play again, s = draw spectrogram, q = save and quit)')
-    user.input <- readline()
+    if(feedback){
+      cat('Do they look / sound the same? (y = yes, n = no, u = unsure, a = play again, s = draw spectrogram, q = save and quit)')
+      user.input <- readline()
 
-    if(user.input %in% c('y','n','u')){
-      play.again <- F
+      if(user.input %in% c('y','n','u')){
+        play.again <- F
 
-      if(user.input == 'y'){
-        cat('Which one do you think is the focal? (1 = left/first, 2 = right/second, u = unknown) You can press a to replay ')
-        whichfoc <- readline()
-        while(whichfoc == 'a'){
-          play(wav.a)
-          play(wav.b)
+        if(user.input == 'y'){
+          cat('Which one do you think is the focal? (1 = left/first, 2 = right/second, u = unknown) You can press a to replay ')
           whichfoc <- readline()
+          while(whichfoc == 'a'){
+            play(wav.a)
+            play(wav.b)
+            whichfoc <- readline()
+          }
+          out <- paste(user.input, whichfoc, sep = '_')
+          return(out)
+        } else{
+
+
+          return(user.input)
         }
-        out <- paste(user.input, whichfoc, sep = '_')
-        return(out)
-      } else{
-
-
-        return(user.input)
+      } else if(user.input == 'q'){
+        return(NA)
       }
-    } else if(user.input == 'q'){
-      return(NA)
+    } else{
+      play.again <- F
+      invisible(NULL)
     }
-
   }
-
 }
 
