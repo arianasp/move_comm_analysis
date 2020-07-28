@@ -21,13 +21,13 @@
 name <- 'ari'
 
 #INPUT: which year's data to use
-year <- 2019 
+year <- 2019
 
 #INPUT: which meerkat group
 group <- 'HM'
 
 #INPUT: directory where call match data are/will be stored
-match.save.dir <- '~/Dropbox/meerkats/meerkats_shared/ari' 
+match.save.dir <- '~/Dropbox/meerkats/meerkats_shared/ari'
 
 #INPUT: directories where data is stored
 label.dir <- '~/Dropbox/meerkats/meerkats_shared/data'
@@ -35,7 +35,7 @@ audio.dir <- paste('/Volumes/Public/MEERKAT_RAW_DATA/', year, sep='')
 gps.dir <- paste('~/Dropbox/meerkats/meerkats_shared/data')
 
 #INPUT: wav player - this might be mac/pc difference but /usr/bin/afplay works for me
-wav.player <- '/usr/bin/afplay' 
+wav.player <- '/usr/bin/afplay'
 
 #LEAVE THE PARAMETERS BELOW AS IS
 
@@ -43,7 +43,7 @@ wav.player <- '/usr/bin/afplay'
 time.thresh <- 0.3
 
 #time threshold for how similar in duration two calls have to be to be flagged as possibly the same
-dur.thresh <- 0.1 
+dur.thresh <- 0.1
 
 #padding to play on either side of a call
 pad <- 0.05
@@ -51,99 +51,10 @@ pad <- 0.05
 #maximum distance apart to check (to be conservative, set this to 20m)
 max.dist.apart <- 20
 
-#--------------LIBRARIES------------------
-library(Hmisc)
-library(tuneR)
-library(seewave)
-library(lubridate)
-library(signal)
-library(oce)
-
-#--------------FUNCTIONS-------------------
-#extract and line up spectrograms of matched calls for visual and audio comparison
-play.compare.calls <- function(matches, labels.to.wav.files, i, pad=.1){
-  
-  play.again <- T
-  while(play.again){
-    file.a <- labels.to.wav.files$wav.file[which(labels.to.wav.files$label.file==matches$file.a[i])]
-    file.b <- labels.to.wav.files$wav.file[which(labels.to.wav.files$label.file==matches$file.b[i])]
-    t0.a <- as.numeric(seconds(hms(matches$t0.rec.a[i]))) - pad
-    tf.a <- t0.a + matches$dur.a[i] + 2*pad
-    t0.b <- as.numeric(seconds(hms(matches$t0.rec.b[i]))) - pad
-    tf.b <- t0.b + matches$dur.b[i] + 2*pad
-    
-    #make spectrograms the same size for easier comparison
-    tot.len <- max(tf.a - t0.a, tf.b - t0.b)
-    
-    wav.a <- readWave(file.a, from = t0.a, to = t0.a + tot.len, units='seconds')
-    wav.b <- readWave(file.b, from = t0.b, to = t0.b + tot.len, units='seconds')
-    specwin <- 256
-    
-    if(wav.a@samp.rate > 8000){
-      wav.a <- downsample(wav.a, 8000)
-    }
-    if(wav.b@samp.rate > 8000){
-      wav.b <- downsample(wav.b, 8000)
-    }
-    
-    if(length(dev.list() > 20)){
-      dev.off(dev.list()["RStudioGD"])
-    }
-    
-    par(mfrow=c(1,2), mar = c(1,1,1,1))
-    
-    #first spectrogram
-    spec.a <- spectro(wav.a, wl = specwin, ovlp=95, flog=T, plot = F, wn = 'blackman')
-    image.plot(t(spec.a$amp), x = spec.a$time, y = spec.a$freq, horizontal = T, xlab = 'n', ylab = 'n', col = viridis(1024))
-    start.frac.a <- pad / tot.len
-    end.frac.a <- (tf.a - t0.a - pad) / tot.len 
-    start.spec.a <- start.frac.a * max(spec.a$time)
-    end.spec.a <- end.frac.a * max(spec.a$time)
-    abline(v = c(start.spec.a, end.spec.a), lwd = 2, col = 'black', lty = 2)
-    
-    #second spectrogram
-    spec.b <- spectro(wav.b, wl = specwin, ovlp=95, flog=T, plot = F, wn = 'blackman')
-    image.plot(t(spec.b$amp), x = spec.b$time, y = spec.b$freq, horizontal = T, xlab = 'n', ylab = 'n', col = viridis(1024))
-    start.frac.b <- pad / tot.len
-    end.frac.b <- (tf.b - t0.b - pad) / tot.len
-    start.spec.b <- start.frac.b * max(spec.b$time)
-    end.spec.b <- end.frac.b * max(spec.b$time)
-    abline(v = c(start.spec.b, end.spec.b), lwd = 2, col = 'black', lty = 2)
-    
-    play(wav.a)
-    play(wav.b)
-    
-    cat('Do they look / sound the same? (y = yes, n = no, u = unsure, a = play again, s = draw spectrogram, q = save and quit)')
-    user.input <- readline()
-    
-    if(user.input %in% c('y','n','u')){
-      play.again <- F
-      
-      if(user.input == 'y'){
-        cat('Which one do you think is the focal? (1 = left/first, 2 = right/second, u = unknown) You can press a to replay ')
-        whichfoc <- readline()
-        while(whichfoc == 'a'){
-          play(wav.a)
-          play(wav.b)
-          whichfoc <- readline()
-        }
-        out <- paste(user.input, whichfoc, sep = '_')
-        return(out)
-      } else{
-      
-      
-        return(user.input)
-      }
-    } else if(user.input == 'q'){
-      return(NA)
-    } 
-    
-  }
-  
-}
-
-
 #---------------SETUP---------------------
+
+#source functions
+source('play_compare_calls.R')
 
 #label file name
 label.file <- paste(label.dir,'/',year, '_ALL_CALLS_SYNCHED.csv', sep = '')
@@ -162,8 +73,8 @@ if(loadfromfile=='n'){
   ok <- readline('Is that all OK? (y/n) ')
   if(ok == 'y'){
     load.matches <- F
-  } 
-} 
+  }
+}
 
 print('setting up, please wait...')
 
@@ -189,7 +100,7 @@ if(!load.matches){
 #convert t0 and tf to number
 if(!load.matches){
   calls$t0num <- as.numeric(as.POSIXlt(calls$t0GPS))
-  
+
   #give each call a unique identifier
   calls$unique.id <- seq(1, nrow(calls), 1)
 }
@@ -202,61 +113,61 @@ if(!load.matches){
 if(!load.matches){
   #loop over filenames and flag possible matches
   matches <- data.frame()
-  
+
   files.all <- unique(calls$fileName)
-  
+
   for(i in 1:length(files.all)){
-    
+
     #separate out one file
     calls.file <- calls[which(calls$fileName == files.all[i] & calls$duration > 0),]
     calls.nonfile <- calls[which(calls$fileName != files.all[i] & calls$duration > 0),]
-    
+
     #for each row in that file, search for matches
     for(j in 1:nrow(calls.file)){
-      
+
       t0.call <- calls.file$t0num[j]
       dur.call <- calls.file$duration[j]
-      
+
       #only look at calls with duration > 0 sec (no 'start' markers included)
       if(dur.call > 0){
-      
+
         #calculate time diff between calls from other files and this call
         dt <- abs(calls.nonfile$t0num - t0.call)
-        
+
         #calculate difference in duration between calls from other files and this call
         ddur <- abs(calls.nonfile$duration - dur.call)
-        
+
         #find potential matches
         idx.match <- which(dt <= time.thresh & ddur <= dur.thresh)
-        
+
         #get number of matches
         n.matches <- length(idx.match)
-        
+
         #if some matches found, add information to data frame of possible matches
         if(n.matches>0){
-          
+
           match.rows <- data.frame(unique.id.a = rep(calls.file$unique.id[j], n.matches), unique.id.b = calls.nonfile$unique.id[idx.match])
           matches <- rbind(matches, match.rows)
-          
+
         }
       }
-      
-      
+
+
     }
-    
+
   }
-  
+
   #first relabel ids of the two events by so that a is min and b is max (arbitrary, but helps with removing duplicates)
   matches$min.unique.id <- apply(cbind(matches$unique.id.a, matches$unique.id.b),1,min)
   matches$max.unique.id <- apply(cbind(matches$unique.id.a, matches$unique.id.b),1,max)
   matches$unique.id.a <- matches$min.unique.id
   matches$unique.id.b <- matches$max.unique.id
   matches <- matches[,c('unique.id.a','unique.id.b')]
-  
+
   #remove duplicates (since all overlap events have gotten picked up twice, once on each file)
   dups <- duplicated(cbind(matches$unique.id.a,matches$unique.id.b))
   matches <- matches[!dups,]
-  
+
   #add some other useful columns
   matches$file.a <- calls$fileName[match(matches$unique.id.a, calls$unique.id)]
   matches$file.b <- calls$fileName[match(matches$unique.id.b, calls$unique.id)]
@@ -273,8 +184,8 @@ if(!load.matches){
   matches$unsurefoc.b <- calls$unsureFocal[match(matches$unique.id.b, calls$unique.id)]
   matches$ind.a <- calls$ind[match(matches$unique.id.a, calls$unique.id)]
   matches$ind.b <- calls$ind[match(matches$unique.id.b, calls$unique.id)]
-  
-  
+
+
   #get rid of synchs and beeps
   matches <- matches[which(!(matches$type.a == 'synch')),]
   matches <- matches[which(!(matches$type.b == 'synch')),]
@@ -282,29 +193,29 @@ if(!load.matches){
 
 #load gps data and add distance info to the matches table
 if(!load.matches){
-  
+
   load(gps.file)
   ind.info <- read.table(ind.info.file, header=T, sep = '\t')
-  
+
   #add columns to matches table with index in gps data matrices
   matches$ind.idx.a <- match(matches$ind.a,ind.info$code)
   matches$ind.idx.b <- match(matches$ind.b,ind.info$code)
-  
+
   #get time index
   matches$tGPS <- calls$t0GPS_UTC[match(matches$unique.id.a, calls$unique.id)]
   matches$date <- calls$date[match(matches$unique.id.a, calls$unique.id)]
   matches$date.idx <- match(matches$date, dates)
   matches$t.idx <- calls$t0_idx_dayTimeline[match(matches$unique.id.a, calls$unique.id)] + dayIdx[matches$date.idx] -1
-  
+
   #get x and y coordinates
   matches$x.a <- allX[cbind(matches$ind.idx.a, matches$t.idx)]
   matches$y.a <- allY[cbind(matches$ind.idx.a, matches$t.idx)]
   matches$x.b <- allX[cbind(matches$ind.idx.b, matches$t.idx)]
   matches$y.b <- allY[cbind(matches$ind.idx.b, matches$t.idx)]
-  
+
   #get distance between a and b
   matches$dist.apart <- sqrt( (matches$x.a - matches$x.b)^2 + (matches$y.a - matches$y.b)^2 )
-  
+
 }
 
 #make a table that matches label files to wav files for easy access
@@ -318,7 +229,7 @@ if(!load.matches){
     wav.file <- NULL
     found <- F
     for(i in 1:length(all.audio.files)){
-      
+
       ismatch <- grepl(escapeRegex(gsub('.wav','',basename(all.audio.files[i]),ignore.case=T)), label.file)
       if(ismatch){
         wav.file <- all.audio.files[i]
@@ -336,10 +247,10 @@ if(!load.matches){
 
 #find indices of matches to look at (where both calls are labeled as focal and distance < max.dist.apart or NA)
 if(!load.matches){
-  idxs <- which(matches$nonfoc.a == 0 
-                & matches$nonfoc.b == 0 
+  idxs <- which(matches$nonfoc.a == 0
+                & matches$nonfoc.b == 0
                 & matches$unsurefoc.a == 0
-                & matches$unsurefoc.b == 0 
+                & matches$unsurefoc.b == 0
                 & (is.na(matches$dist.apart) | (matches$dist.apart < 20)))
 }
 
@@ -362,17 +273,17 @@ ready <- readline()
 if(ready == 'y'){
   #Loop over indexes we are checking to listen / look at spectrograms and give a manual label
   for(i in 1:length(idxs)){
-    
+
     row <- idxs[i]
 
     #if the call pair was already checked, skip it
     if(!is.na(matches$manual.check.result[row])){
       next
     } else{
-      
+
       print(paste('now viewing calls: ', matches$unique.id.a[row], ' AND ' ,matches$unique.id.b[row], sep = ''))
-      
-      
+
+
       #compare calls and store output in matches data frame
       matches$manual.check.result[row] <- play.compare.calls(matches, labels.to.wav.files, row)
       if(is.na(matches$manual.check.result[row])){
@@ -380,12 +291,12 @@ if(ready == 'y'){
       }
     }
   }
-  
+
   #save output
-  
+
   cat('Would you like to save the labels you created? (y/n)')
   saveorno <- readline()
-  
+
   if(saveorno == 'y'){
     save(file=match.save.file,list=c('matches', 'calls', 'time.thresh','dur.thresh','pad','year','labels.to.wav.files','idxs','all.audio.files'))
     print('successfully saved to: ')
@@ -394,4 +305,4 @@ if(ready == 'y'){
     print('WARNING: table was not saved')
   }
 }
- 
+
