@@ -117,7 +117,7 @@ matches.to.compare <- intersect(matches1$match.id, matches2$match.id)
 #create a data frame that gives the match id and the manual.check.result of both labelers
 labeler1 <- matches1[match(matches.to.compare, matches1$match.id),]
 labeler2 <- matches2[match(matches.to.compare, matches2$match.id),]
-compare.labels <- data.frame(match.id=matches.to.compare, label1 = labeler1$manual.check.result, label2 = labeler2$manual.check.result, type.a = labeler1$type.a, type.b = labeler1$type.b, stringsAsFactors = F)
+compare.labels <- data.frame(match.id=matches.to.compare, label1 = labeler1$manual.check.result, label2 = labeler2$manual.check.result, type.a = labeler1$type.a, type.b = labeler1$type.b, dist = labeler1$dist.apart, dt = labeler1$dt, dur.a = labeler1$dur.a, dur.b = labeler1$dur.b, stringsAsFactors = F)
 ```
 
 ## Some basic info
@@ -190,3 +190,58 @@ agree.foc.cc <- compute.agreement(compare.yeses$label1[cc.idxs], compare.yeses$l
 ```
 
 When it comes to close calls in particular (broadly defined), the labelers agree `r round(sum(diag(agree.foc.cc)) / sum(agree.foc.cc) * 100, digits=1) ` % of the time.
+
+## How far apart (in time) are the calls labeled as the same call?
+
+As a check of both our accuracy in synching, and whether the calls labeled as "the same" are likely to actually be the same, let's have a look at how far apart the calls meant to be "the same" are in time. Here is a histogram of the time differences (from the synched GPS times) between calls that have been identified as "the same"e
+
+```{r}
+hist(compare.yeses$dt*1000, breaks = seq(0,300,10), xlab = 'Time difference (msec)', ylab = 'Frequency', main = 'Calls identified as the same')
+```
+
+The onsets for the vast majority of calls are less then 50 ms apart. Very promising! For comparison, here is the histogram for calls where both labelers agreed they were NOT the same.
+
+```{r}
+
+compare.nos <- compare.labels[which(compare.labels$label1=='n' & compare.labels$label2 == 'n'),]
+hist(compare.nos$dt*1000, breaks = seq(0,300,10), xlab = 'Time difference (msec)', ylab = 'Frequency', main = 'Calls identified as different')
+
+```
+
+We can also get a sense of how accurate our labelers are in measuring the duration of calls (though this will likely be an underestimate because calls that actually originate from a meerkat who is not wearing the collar might be harder to measure accurately). Here is a histogram of the differences in estiamted duration (in msec) from calls that were on two recordings and identified as the same call. I've plotted them vs. the average duration between the two labeled calls, since probably this also plays a role.
+
+```{r}
+
+dur.diffs <- abs(compare.yeses$dur.a - compare.yeses$dur.b)
+dur.avgs <- (compare.yeses$dur.a + compare.yeses$dur.b) / 2
+plot(dur.avgs*1000, dur.diffs*1000, pch = 19, cex = 0.3, xlab = 'Call duration (msec) - average btwn labelers', ylab = 'Difference in cal duration btwn labelers (msec)', main = '', xlim = c(10, max(dur.avgs*1000)), ylim = c(0, max(dur.diffs*1000)), log='x' )
+
+```
+
+Looks like we are broadly accurate within about 20 msec, most of the time. As expected, we are more accurate on shorter calls. 
+
+## Distance apart
+
+If we are picking up something real, we'd expect that the calls identified as the same should come from meerkats that are nearby to one another. Is this true? Let's look at the distribution of distance apart of the two meerkats for calls identified as the same. 
+```{r}
+yes_dist_hist = hist(compare.yeses$dist, breaks = seq(0,20,1), xlab = 'Distance apart (m)', ylab = 'Frequency', main = 'Distance apart between meerkats when calls from one misidentified as focal')
+```
+
+We'll also compare to the distances of the ones where calls were not identified as the same.
+
+```{r}
+no_dist_hist = hist(compare.nos$dist, breaks = seq(0,20,1), xlab = 'Distance apart (m)', ylab = 'Frequency', main = 'Distance apart between meerkats when calls are close in time but not identified as the same')
+```
+
+Looks like the shorter distances are over-represented in the first plot (where calls were the same). Makes sense. Let's see how much the shorter distances are over-represented there.
+
+```{r}
+#normalize
+yes_probs = yes_dist_hist$counts / sum(yes_dist_hist$counts)
+no_probs = no_dist_hist$counts / sum(no_dist_hist$counts)
+
+plot(yes_dist_hist$mids, log10(yes_probs / no_probs), xlab = 'Distance (m)', ylab = 'Over-representation (log ratio)', pch = 19, ylim = c(-1,1))
+abline(h=0)
+```
+
+The misidentified focal calls more often come form meerkats that are less than ~3m apart. These distances are over-represented amongst the instances where the calls are the same. Distances above ~3m are underrepresented, and this underrepresentation increases with distance. This pattern seems about as expected. 
