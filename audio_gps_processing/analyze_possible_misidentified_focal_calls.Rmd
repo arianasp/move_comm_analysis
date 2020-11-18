@@ -1,5 +1,5 @@
 ---
-title: "Analsis of possibly misidentified focal calls"
+title: "Analysis of possibly misidentified focal calls"
 author: "Ariana Strandburg-Peshkin"
 date: "11/10/2020"
 output: html_document
@@ -245,3 +245,71 @@ abline(h=0)
 ```
 
 The misidentified focal calls more often come form meerkats that are less than ~3m apart. These distances are over-represented amongst the instances where the calls are the same. Distances above ~3m are underrepresented, and this underrepresentation increases with distance. This pattern seems about as expected. 
+
+## Discrepancy between files used by Vlad and Baptiste
+
+Earlier on, I noted that the match tables used by Vlad and Baptiste were not quite the same. This indicates that a few of the calls must be different between those analyzed by Vlad and those by Baptiste, probably because they were corrected in label files in the meantime. Let's have a closer look at this by comparing the call tables from Baptiste and Vlad.
+
+```{r}
+#load the files and get their call tables
+load(match.file1)
+calls$unique.string <- paste(calls$fileName, calls$t0File, calls$duration, calls$entryName, sep='|')
+calls1 <- calls
+rm('calls')
+
+load(match.file2)
+calls$unique.string <- paste(calls$fileName, calls$t0File, calls$duration, calls$entryName, sep='|')
+calls2 <- calls
+rm('calls')
+```
+
+First off, let's check if all the calls are unique within a given table. It turns out there are a few duplicates, though interestingly the acoustic measurements are not necessarily the same. Would be worth looking into these. The table of duplicates from Baptiste's file (the latest one) is below.
+
+```{r}
+dups1 <- which(duplicated(calls1$unique.string))
+dups2 <- which(duplicated(calls2$unique.string))
+
+kable(calls1[dups2,])
+```
+
+Now, on to the matter of the calls which are not shared between Baptiste's and Vlad's versions of the call table. Let's first get these.
+
+```{r}
+
+#find the differences between vlad's and baptiste's call lists
+only1 <- setdiff(calls1$unique.string, calls2$unique.string)
+only2 <- setdiff(calls2$unique.string, calls1$unique.string)
+
+calls.only1 <- calls1[match(only1,calls1$unique.string),]
+calls.only2 <- calls2[match(only2,calls2$unique.string),]
+
+#which files are included?
+files.only1 <- unique(calls.only1$fileName)
+files.only2 <- unique(calls.only2$fileName)
+```
+
+Turns out the differences stem from the following files:
+
+```{r}
+print(files.only1)
+print(files.only2)
+```
+
+This means that any results from intersections with those files need to be redone by the first labeler (Vlad)! But the rest should be fine. 
+
+The match.ids in Baptiste's matches that need to be also labeled by Vlad are the following:
+
+```{r}
+matches.only2 <- setdiff(matches2$match.id, matches1$match.id)
+matches.only1 <- setdiff(matches1$match.id, matches2$match.id)
+
+kable(matches.only2)
+```
+
+They are all ones associated with those 3 files that were resynched EXCEPT the first 2 (HM_VHMF010_SOUNDFOC_20190713_BA.WAV|HM_VHMM017_RSTB_R23_20190708-20190720_file_7_(2019_07_13-11_44_59)_135944_LL_VD.wav|01:59:09.237|02:05:43.127|0.177|0.093
+HM_VCVM001_SOUNDFOC_20190718_BA.WAV|HM_VHMM016_LTTB_R29_20190707-20190719_file_12_(2019_07_18-11_44_59)_185944_HB_VD.wav|01:51:54.110|01:55:57.957|0.207|0.134)
+
+I am still quite mystified by this, since the corresponding calls are actually present in both calls tables from the two files, so I don't see why they were matched in Baptiste's but not in Vlad's version! But anyway, these 2 should also be labeled by Vlad as well.
+
+## Comparing amplitude to neighboring calls
+One way to potentially identify focal vs non-focal calls is to compare the amplitude on the 2 devices. However, is this a reliable way to do things?
