@@ -50,7 +50,15 @@ self.responses <- FALSE
 #whether to use nonfocal calls within the same file as the 'caller' with the individual whose reocrding it is as 'respodner'
 #this is mainly to check that the result is not driven by some weird synching issues, because we use the data frome the same recording
 #normally this should be set to FALSE
-use.nonfoc.as.triggers <- TRUE 
+use.nonfoc.as.triggers <- FALSE 
+
+#whether to instead perform an analysis of whether an individual repeats its call in a certain time window after its initial call
+#as a function of whether there have been any calls from nearby individuals (within repeat.dist.thresh.post meters, default 30) in the intervening time
+#all sequences after a call are removed if there has been a call by anyone in the past repeat.time.thresh seconds
+repeat.self.analysis <- TRUE
+repeat.dist.thresh.prev <- 5
+repeat.dist.thresh.post <- 5
+repeat.time.thresh <- 10
 
 #---------------------SETUP-----------------------
 
@@ -186,8 +194,8 @@ for(i in 1:nrow(callresp)){
   
 }
 
-#get rid of self-responses if self.responses==F, otherwise subset to only them
-if(self.responses == T){
+#use self responses if self.responses == T or if performing repeat self analysis (repeat.self.analysis==T), otherwise get rid of self responses
+if(self.responses == T | repeat.self.analysis == T){
   callresp <- callresp[which(callresp$caller == callresp$responder),]
 } else{
   callresp <- callresp[which(callresp$caller != callresp$responder),]
@@ -214,7 +222,7 @@ for(i in 1:nrow(callresp.seqs)){
       for(j in 1:length(dt.foc)){
         
         #for self-response version, don't include the current call
-        if(self.responses & dt.foc[j] == 0){
+        if((self.responses | repeat.self.analysis) & dt.foc[j] == 0){
           call.seq <- call.seq
         } else{
           call.seq <- call.seq + dnorm(tseq, mean = dt.foc[j], sd = bw)
@@ -227,6 +235,133 @@ for(i in 1:nrow(callresp.seqs)){
     callresp.seqs[i,] <- call.seq
     
   }
+}
+
+#if performing an analysis of whether you repeat a call depending on whether others have replied, need to compute some extra things
+if(repeat.self.analysis == T){
+  
+  #----SETUP---
+  #first the time of the previous call (by anyone within repeat.dist.thresh.prev of the caller), the caller id, and the call type
+  callresp$prevcall.t0 <- NA
+  callresp$prevcall.caller <- NA
+  callresp$prevcall.type <- NA
+  callresp$n.inds.in.range.prev <- NA
+  for(i in 1:nrow(callresp)){
+    print(i)
+    
+    #get time of the focal call
+    t0 <- callresp$t0[i] 
+    
+    #time index in timeLine
+    t0.round <- round(t0)
+    t.idx <- which(ts == t0.round)
+    
+    #distances to all other individuals present
+    dists <- sqrt((allX[-c(ind.idx),t.idx] - allX[ind.idx,t.idx])^2 + (allY[-c(ind.idx),t.idx] - allY[ind.idx,t.idx])^2)
+    
+    #get the individuals that are in range (wihtin repeat.dist.thresh.prev)
+    inds.in.range.idxs <- which(dists < repeat.dist.thresh.prev)
+    
+    #store number of individuals in range
+    callresp$n.inds.in.range.prev[i] <- length(inds.in.range.idxs)
+    
+    #if there are some indivudals in range, find the most recent call from any of them of any type
+    if(length(inds.in.range.idxs)>0){
+      inds.in.range <- indInfo$code[inds.in.range.idxs]
+      calls.inds.in.range <- calls.all[which(calls.all$ind %in% inds.in.range),]
+      prev.call.time.inds.in.range <- max(calls.inds.in.range$t0[which(calls.inds.in.range$t0 < t0)])
+      callresp$prevcall.t0[i] <- as.numeric(prev.call.time.inds.in.range)
+      prev.call.inds.in.range.idx <- which(calls.inds.in.range$t0 == prev.call.time.inds.in.range)[1]
+      callresp$prevcall.caller[i] <- calls.inds.in.range$ind[prev.call.inds.in.range.idx]
+      callresp$prevcall.type[i] <- calls.inds.in.range$callSimple[prev.call.inds.in.range.idx]
+    }
+    
+    #get all calls prior to that
+    #calls.prior <- which(calls.all$isCall==1 & ((calls.all$t0 - t0) < 0))
+    
+    #find the most recent call
+    #most.recent.call.time <- max(calls.all$t0[calls.prior])
+    
+    #if(!is.na(most.recent.call.time)){
+    #  most.recent.call.row <- which(calls.all$t0 == most.recent.call.time)[1]
+    
+      #store information on that call in the data frame
+    #  callresp$prevcall.t0[i] <- as.numeric(calls.all$t0[most.recent.call.row])
+    #  callresp$prevcall.caller[i] <- calls.all$ind[most.recent.call.row]
+    #  callresp$prevcall.type[i] <- calls.all$callSimple[most.recent.call.row]
+    #}
+  }
+  
+  #find the time of the next non-focal call from an individual within repeat.dist.thresh.post
+  ts <- as.numeric(timeLine)
+  callresp$n.inds.in.range <- NA
+  callresp$nextcall.t0 <- NA
+  callresp$nextcall.caller <- NA
+  callresp$nextcall.type <- NA
+  for(i in 1:nrow(callresp)){
+    
+    #time of call
+    t0 <- callresp$t0[i]
+    
+    #caller
+    ind <- callresp$caller[i]
+    ind.idx <- which(indInfo$code == ind)
+    
+    #time index in timeLine
+    t0.round <- round(t0)
+    t.idx <- which(ts == t0.round)
+    
+    #distances to all other individuals present
+    dists <- sqrt((allX[-c(ind.idx),t.idx] - allX[ind.idx,t.idx])^2 + (allY[-c(ind.idx),t.idx] - allY[ind.idx,t.idx])^2)
+    
+    #get the individuals that are in range (wihtin repeat.dist.thresh.post)
+    inds.in.range.idxs <- which(dists < repeat.dist.thresh.post)
+    
+    #store number of individuals in range
+    callresp$n.inds.in.range[i] <- length(inds.in.range.idxs)
+    
+    #if there are some indivudals in range, find the next call from any of them of a type in responder.calltypes
+    if(length(inds.in.range.idxs)>0){
+      inds.in.range <- indInfo$code[inds.in.range.idxs]
+      calls.inds.in.range <- calls.all[which(calls.all$ind %in% inds.in.range),]
+      next.call.time.inds.in.range <- min(calls.inds.in.range$t0[which(calls.inds.in.range$t0 > t0 & calls.inds.in.range$callSimple %in% responder.calltypes)])
+      callresp$nextcall.t0[i] <- as.numeric(next.call.time.inds.in.range)
+      next.call.inds.in.range.idx <- which(calls.inds.in.range$t0 == next.call.time.inds.in.range)[1]
+      callresp$nextcall.caller[i] <- calls.inds.in.range$ind[next.call.inds.in.range.idx]
+      callresp$nextcall.type[i] <- calls.inds.in.range$callSimple[next.call.inds.in.range.idx]
+    }
+  }
+  callresp$dt.prev <- callresp$t0 - callresp$prevcall.t0
+  callresp$dt.next <- callresp$nextcall.t0 - callresp$t0
+  
+  #---ANALYSIS---
+  
+  #set up vectors to hold output for call rather at a time point after a call when there IS vs IS NOT a response
+  callrate.noresp <- callrate.resp <- rep(NA, length(bins)-1)
+  
+  ##bins to measure individual call rate over (after a focal call), get response sequences only after t0 = 0
+  bins <- tseq[which(tseq >= 0)]
+  callresp.seqs.repeat <- callresp.seqs[,which(tseq >= 0)]
+  
+  #loop over bins to compute call rates when there has or hasn't been a response
+  callrate.resp <- callrate.nonresp <- n.resp <- n.nonresp <- rep(NA, length(bins)-1)
+  for(i in 2:length(bins)){
+    response.idxs <- which(callresp$dt.next < bins[i] & callresp$dt.prev > repeat.time.thresh)
+    nonresponse.idxs <- which(callresp$dt.next > bins[i] & callresp$dt.prev > repeat.time.thresh)
+    
+    callrate.resp[i] <- mean(callresp.seqs.repeat[response.idxs,i],na.rm=T)
+    callrate.nonresp[i] <- mean(callresp.seqs.repeat[nonresponse.idxs,i],na.rm=T)
+    n.resp[i] <- length(response.idxs)
+    n.nonresp[i] <- length(nonresponse.idxs)
+  }
+  
+  quartz(height = 12, width = 8)
+  par(mfrow=c(2,1))
+  plot(bins, callrate.resp, type='l', col = 'red', lwd = 2, xlab = 'Time after call (sec)', ylab = c('Call rate'), cex.lab = 1.5, main = paste('Min silence = ', repeat.time.thresh, ' | Max dist prev = ', repeat.dist.thresh.prev, ' | Max dist post = ', repeat.dist.thresh.post))
+  lines(bins, callrate.nonresp, col = 'blue', lwd = 2, lty = 1)
+  legend('topright', legend = c('reply', 'no reply'), col = c('red','blue'), lty = c(1,1), cex = 1.5)
+  plot(bins, n.resp, type = 'l', lwd = 2, xlab = 'Time (sec)', ylab = 'Number of events', col = 'red', cex = 2, cex.lab = 1.5, ylim = c(0, max(n.resp + n.nonresp,na.rm=T)))
+  lines(bins,n.nonresp, lwd = 2, col = 'blue')
 }
 
 #---------------------PLOTTING-------------------
