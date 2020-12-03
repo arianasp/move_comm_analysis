@@ -40,8 +40,14 @@ parse_meerkat_call_labels <- function(call.labels){
   #convert labels to lower case
   call.labels <- tolower(as.character(call.labels))
   
+  #store original labels
+  call.labels.orig <- call.labels
+  
   #remove anything in parentheses
   call.labels <- gsub("\\([^\\]]*\\)", "", call.labels, perl=TRUE)
+  
+  #remove anything after a /
+  call.labels <- gsub("\\/.*","", call.labels)
   
   #get number of calls
   n <- length(call.labels)
@@ -57,24 +63,29 @@ parse_meerkat_call_labels <- function(call.labels){
                              stringsAsFactors = F)
   
   #deal with the non hybrid calls
-  call.types.simple <- c('s','lc','agg','soc','chat','mo','ld','al','cc','ukn','oth')
+  call.types.simple <- c('s','lc','agg','soc','chat','mo','ld','al','cc','ukn','oth','cchyb')
   calls.parsed$callSimple[which(grepl('s', call.labels,ignore.case=T))] <- 's'
   calls.parsed$callSimple[which(grepl('lc',call.labels,ignore.case=T))] <- 'lc'
   calls.parsed$callSimple[which(grepl('lost',call.labels,ignore.case=T))] <- 'lc'
   calls.parsed$callSimple[which(grepl('ag',call.labels,ignore.case=T))] <- 'agg'
+  calls.parsed$callSimple[which(grepl('growl',call.labels,ignore.case=T))] <- 'agg'
   calls.parsed$callSimple[which(grepl('so',call.labels,ignore.case=T))] <- 'soc'
   calls.parsed$callSimple[which(grepl('chat',call.labels,ignore.case=T))] <- 'chat'
   calls.parsed$callSimple[which(grepl('mo',call.labels,ignore.case=T))] <- 'mo'
   calls.parsed$callSimple[which(grepl('ld',call.labels,ignore.case=T))] <- 'ld'
   calls.parsed$callSimple[which(grepl('lead',call.labels,ignore.case=T))] <- 'ld'
-  calls.parsed$callSimple[which(grepl('al',call.labels,ignore.case=T))] <- 'al'
+  calls.parsed$callSimple[which(grepl('al',call.labels,ignore.case=T) & !grepl('focal', call.labels, ignore.case=T))] <- 'al'
   calls.parsed$callSimple[which(grepl('cc',call.labels,ignore.case=T))] <- 'cc'
   calls.parsed$callSimple[which(call.labels == 'c')] <- 'cc'
   calls.parsed$callSimple[which(grepl('Marker',call.labels,ignore.case=T))] <- 'cc'
   calls.parsed$callSimple[which(grepl('uk',call.labels,ignore.case=T))] <- 'ukn'
   calls.parsed$callSimple[which(grepl('unk',call.labels,ignore.case=T))] <- 'ukn'
   
+  #a few misc issues having to do with 'al'
+  calls.parsed$callSimple[which(grepl('social',call.labels,ignore.case=T))] <- 'soc'
+  
   #deal with synch calls, beeps, skips, and various other non-call things
+  calls.parsed$callSimple[which(grepl('\\:', call.labels, ignore.case=T))] <- 'synch'
   calls.parsed$callSimple[which(grepl('syn',call.labels,ignore.case=T))] <- 'synch'
   calls.parsed$callSimple[which(grepl('syc',call.labels,ignore.case=T))] <- 'synch'
   calls.parsed$callSimple[which(grepl('bee',call.labels,ignore.case=T))] <- 'beep'
@@ -93,6 +104,12 @@ parse_meerkat_call_labels <- function(call.labels){
   calls.parsed$callSimple[which(grepl('bir',call.labels,ignore.case=T))] <- 'bir'
   calls.parsed$callSimple[which(grepl('outrange',call.labels,ignore.case=T))] <- 'oor'
   calls.parsed$callSimple[which(grepl('inrange',call.labels,ignore.case=T))] <- 'bir'
+  calls.parsed$callSimple[which(grepl('nn', call.labels, ignore.case=T))] <- 'nn'
+  calls.parsed$callSimple[which(grepl('b\\/', call.labels.orig, ignore.case=T))] <- 'beh'
+  calls.parsed$callSimple[which(grepl('\\@', call.labels.orig, ignore.case=T))] <- 'beh'
+  calls.parsed$callSimple[which(grepl('gt', call.labels, ignore.case=T))] <- 'beh'
+  calls.parsed$callSimple[which(grepl('recon', call.labels.orig, ignore.case=T))] <- 'recon'
+  calls.parsed$callSimple[which(grepl('recoff', call.labels.orig, ignore.case=T))] <- 'recoff'
   
   #create column for the simple call types
   calls.parsed$callType <- calls.parsed$callSimple
@@ -102,6 +119,13 @@ parse_meerkat_call_labels <- function(call.labels){
   hyb.idxs <- unique(c(which(grepl('hyb', call.labels)), which(grepl('fu', call.labels)), which(grepl('sq', call.labels))))
   hyb.labels <- sapply(call.labels[hyb.idxs], FUN = hybrid_to_standard_format)
   calls.parsed$callType[hyb.idxs] <- hyb.labels
+  cchyb.idxs <- intersect(which(grepl('cc', call.labels)), hyb.idxs)
+  calls.parsed$callSimple[cchyb.idxs] <- 'cchyb'
+  
+  #deal with the lead cc's separately
+  lead.ccs <- which(grepl('lead cc', call.labels, ignore.case=T))
+  calls.parsed$callType[lead.ccs] <- 'hyb cc+ld'
+  calls.parsed$callSimple[lead.ccs] <- 'cchyb'
   
   #get whether it's a call
   calls.parsed$isCall <- 0
@@ -128,6 +152,7 @@ parse_meerkat_call_labels <- function(call.labels){
   #get whether it's a hybrid
   calls.parsed$hybrid <- 0
   calls.parsed$hybrid[hyb.idxs] <- 1
+  calls.parsed$hybrid[cchyb.idxs] <- 1
   calls.parsed$hybrid[which(calls.parsed$isCall==0 | is.na(calls.parsed$isCall))] <- NA
   
   return(calls.parsed)
