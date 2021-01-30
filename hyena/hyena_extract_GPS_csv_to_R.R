@@ -21,10 +21,13 @@ setwd(codedir)
 source('hyena_functions.R')
 
 #Directory where csv files are stored
-directory <- '/Volumes/EAS_shared/hyena/archive/hyena_pilot_2017/rawdata/gps_technosmart'
+indir <- '/Volumes/EAS_shared/hyena/archive/hyena_pilot_2017/rawdata/gps_technosmart'
+
+#Directory where to store output
+outdir <- '/Volumes/EAS_shared/hyena/archive/hyena_pilot_2017/processed/gps'
 
 #Set working directory
-setwd(directory)
+setwd(indir)
 
 #First create a data frame (hyena.ids) that maps hyenas to collar ids
 hyena.ids <- data.frame(name = c('WRTH','BORA','BYTE','MGTA','FAY'), collar = c('352a','352b','354a','360a','366a'), id = seq(1,5,1),color=c('red','blue','green','magenta','orange'))
@@ -82,18 +85,19 @@ for(i in 1:n){
 }
 
 #Get list of dates and indexes to starts of (complete) days (so skip the first Dec 31 hours)
-days <- as.Date(timestamps)
-dates <- sort(unique(days))[2:length(unique(days))]
+days <- as.Date(timestamps + tz_offset*60*60)
+dates <- sort(unique(days))
 day.start.idxs <- c()
-for(i in 2:length(dates)){
+for(i in 1:length(dates)){
 	day.start.idxs <- c(day.start.idxs, min(which(days==dates[i])))
 }
 
 if(overwrite){
-  setwd('/Volumes/EAS_shared/hyena/archive/hyena_pilot_2017/processed/gps')
-[  save(file='hyena_gps_level0.RData',list=c('xs','ys','lats','lons','timestamps','hyena.ids','hyena.gps','dates','day.start.idxs'))
+  setwd(outdir)
+  save(file='hyena_gps_level0.RData',list=c('xs','ys','lats','lons','timestamps','hyena.ids','hyena.gps','dates','day.start.idxs'))
   save(file='hyena_xy_level0.Rdata',list=c('xs','ys'))
-  save(file='hyena_timestamps.Rdata',list=c('timestamps','day.start.idxs'))
+  save(file='hyena_timestamps.Rdata',list=c('timestamps'))
+  save(file='hyena_day_start_idxs.RData', list = c('day.start.idxs'))
   save(file='hyena_latlon_level0.RData',list=c('lats','lons'))
-  save(file='hyena_ids.RData',list=c('hyena.ids'))];l/
+  save(file='hyena_ids.RData',list=c('hyena.ids'))
 }
