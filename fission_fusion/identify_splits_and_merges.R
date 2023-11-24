@@ -25,9 +25,17 @@
 #called events_detected.
 #In cases where the number of subgroups went from 1 to 2 (for a fission) or 2 to
 #1 (for a fusion), identify the members of the 2 subgroups as group A and B 
-#(labels arbitrary). In cases where there were more subgroups, first 
+#(labels arbitrary). In cases where there were more subgroups, first ...
 
-detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts = ts, coati_ids = coati_ids, verbose = T){
+#TODO: Check how events are being linked together
+#TODO: Something going wrong with NAs - look into it
+#TODO: Warnings when can't unambiguoulsy identify groups
+
+library(lubridate)
+library(dbscan)
+library(plotrix)
+
+detect_fissions_and_fusions <- function(xs, ys, ts, R_inner, R_outer, names, verbose = T){
   
   #----Identify subgroups at each point
   if(verbose){print('Identifying subgroups at each point using sticky DBSCAN')}
@@ -206,22 +214,27 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
   changes$event_type <- NA
   changes$n_groups_curr <- unlist(lapply(groups_list, length))[event_times]
   changes$n_groups_next <- unlist(lapply(groups_list, length))[event_times+1]
-  changes$n_inds_curr <- changes$n_inds_next <- NA
+  changes$inds_curr <- changes$inds_next <- ''
   for(i in 1:nrow(changes)){
     t <- changes$tidx[i]
     groups_curr <- groups_list[[t]]
     groups_next <- groups_list[[t+1]]
-    changes$n_inds_curr[i] <- sum(unlist(lapply(groups_curr, length)))
-    changes$n_inds_next[i] <- sum(unlist(lapply(groups_next, length)))
+    changes$inds_curr[i] <- paste0(which(!is.na(xs[,t])),collapse='_')
+    changes$inds_next[i] <- paste0(which(!is.na(xs[,t+1])),collapse='_')
   }
   
-  changes$event_type[which(changes$n_groups_curr < changes$n_groups_next & changes$n_inds_curr==changes$n_inds_next)] <- 'fission'
-  changes$event_type[which(changes$n_groups_curr > changes$n_groups_next & changes$n_inds_curr==changes$n_inds_next)] <- 'fusion'
+  #any times when any individual has missing data cannot be considered as FF events 
+  #TODO: relax this assumption!
+  changes$event_type[which(changes$n_groups_curr < changes$n_groups_next & changes$inds_curr==changes$inds_next)] <- 'fission'
+  changes$event_type[which(changes$n_groups_curr > changes$n_groups_next & changes$inds_curr==changes$inds_next)] <- 'fusion'
   
   #get groups for fissions and fusions
   changes$group_A_idxs <- changes$group_A <- changes$group_B_idxs <- changes$group_B <- list(c(0))
   fissions <- which(changes$event_type=='fission')
   fusions <- which(changes$event_type=='fusion')
+  
+  #make a column to hold a warning if the subgroups couldn't be unambiguously matched for that event
+  changes$warning <- F
   
   #Identify which subgroups split or merged
   if(verbose){print('Determinig which subgroups split and merged')}
@@ -259,6 +272,7 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
       }else{
         warning(paste('Could not identify unambiguously subgroups for event',i,
                       'due to more than 2 unmatched subgroups'))
+        changes$warning[i] <- T
       }
       
     }
@@ -298,20 +312,19 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
       }else{
         warning(paste('Could not identify unambiguously subgroups for event',i,
                       'due to more than 2 unmatched subgroups'))
+        changes$warning[i] <- T
       }
       
     }
   }
   
-  #get coati names
-  coati_ids$name_short <- sapply(coati_ids$name, function(x){return(substr(x,1,3))})
   for(i in c(fissions,fusions)){
-    changes$group_A[i] <- list(coati_ids$name_short[changes$group_A_idxs[i][[1]]])
-    changes$group_B[i] <- list(coati_ids$name_short[changes$group_B_idxs[i][[1]]])
+    changes$group_A[i] <- list(names[changes$group_A_idxs[i][[1]]])
+    changes$group_B[i] <- list(names[changes$group_B_idxs[i][[1]]])
   }
   
   #final events dataframe (call it events_detected)
-  events_detected <- changes[c(fissions, fusions),c('tidx','datetime','event_type','group_A_idxs','group_B_idxs','group_A','group_B')]
+  events_detected <- changes[c(fissions, fusions),c('tidx','datetime','event_type','group_A_idxs','group_B_idxs','group_A','group_B','warning')]
   
   #get number of individuals in each subgroup
   events_detected$n_A <- sapply(events_detected$group_A_idxs, length)
@@ -323,7 +336,81 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
   if(verbose){print('Done.')}
   
   #return things
-  out <- list(events_detected = events_detected, groups_list = groups_list, together = together, changes = changes, R_inner = R_inner, R_outer = R_outer)
-  return(out) 
+  ff_data <- list(events_detected = events_detected, groups_list = groups_list, together = together, changes = changes, R_inner = R_inner, R_outer = R_outer)
+  return(ff_data) 
+  
+}
+
+#Visualize fission-fusion events
+visualize_ff_event <- function(ff_data, xs, ys, event_number, t_before = 600, t_after = 600, t_step = 5){
+  
+  #get the event data from the ff_data object
+  event_data <- ff_data$events_detected[event_number,]
+  
+  #get the time window around the event
+  t_win <- seq(event_data$tidx-t_before, event_data$tidx + t_after)
+  
+  #get x and y data for all individuals during that time window
+  xs_t <- xs[,t_win]
+  ys_t <- ys[,t_win]
+  
+  #get number of individuals
+  n_inds <- nrow(xs_t)
+  n_times <- ncol(xs_t)
+  
+  #get together data for the event
+  together_t <- ff_data$together[,,t_win]
+  
+  #get event type (fission on fusion)
+  event_type <- event_data$event_type
+  
+  #inds in group A and group B
+  inds_A <- event_data$group_A_idxs[[1]]
+  inds_B <- event_data$group_B_idxs[[1]]
+  inds_all <- c(inds_A, inds_B)
+  
+  #set colors based on group
+  cols <- rep('gray', n_inds)
+  cols_inner <- rep('#00000005',n_inds)
+  cols_outer <- rep('#00000003',n_inds)
+  cols[inds_A] <- 'red'
+  cols[inds_B] <- 'blue'
+  cols_inner[inds_A] <- '#FF000005'
+  cols_inner[inds_B] <- '#0000FF05'
+  cols_outer[inds_A] <- '#FF000003'
+  cols_outer[inds_B] <- '#0000FF03'
+  
+  
+  #get window for plotting
+  xmin <- min(xs_t[inds_all,],na.rm=T) - ff_data$R_outer
+  xmax <- max(xs_t[inds_all,],na.rm=T) + ff_data$R_outer
+  ymin <- min(ys_t[inds_all,],na.rm=T) - ff_data$R_outer
+  ymax <- max(ys_t[inds_all,],na.rm=T) + ff_data$R_outer
+  
+  #make the bottom left = 0,0
+  xs_t <- xs_t - xmin
+  ys_t <- ys_t - ymin
+  
+  #create the plot
+  quartz()
+  for(t in seq(1,n_times,t_step)){
+    #set up plot for that time step
+    plot(NULL, xlim = c(0, xmax-xmin), ylim = c(0, ymax-ymin), asp = 1,xlab = 'Distance E (m)', ylab = 'Distance N (m)', main = paste(event_data$event_type))
+
+    #draw lines connecting individuals that are 'together'
+    for(i in 1:(n_inds-1)){
+      for(j in (i+1):n_inds){
+        if(!is.na(together_t[i,j,t])){
+          if(together_t[i,j,t]){
+            lines(c(xs_t[i,t], xs_t[j,t]), c(ys_t[i,t], ys_t[j,t]))
+          }
+        }
+      }
+    }
+
+    #draw points representing each individual, colored by subgroup
+    points(xs_t[,t], ys_t[,t], col = cols, pch = 19)
+    Sys.sleep(.1)
+  }
   
 }
