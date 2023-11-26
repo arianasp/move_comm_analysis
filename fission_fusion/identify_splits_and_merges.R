@@ -30,6 +30,7 @@
 #TODO: Check how events are being linked together
 #TODO: Something going wrong with NAs - look into it
 #TODO: Warnings when can't unambiguoulsy identify groups
+#TODO: Generalize day_start_idxs to allow continuous dat
 
 library(lubridate)
 library(dbscan)
@@ -207,7 +208,7 @@ detect_fissions_and_fusions <- function(xs, ys, ts, R_inner, R_outer, names, ver
     }
   }
   
-  if(verbose){print('Finding fissions and fusion')}
+  if(verbose){print('Finding fissions and fusions')}
   #go through event times and classify events into types
   changes <- data.frame(tidx = event_times)
   changes$datetime <- ts[changes$tidx]
@@ -341,7 +342,97 @@ detect_fissions_and_fusions <- function(xs, ys, ts, R_inner, R_outer, names, ver
   
 }
 
-#Visualize fission-fusion events
+#Visualize all ff events within a certain time frame
+visualize_all_ff_events <- function(ff_data, xs, ys, t_start, t_end, t_step = 5){
+  
+  #get the time window for plotting events
+  t_win <- seq(t_start, t_end)
+  
+  #get x and y data for all individuals during that time window
+  xs_t <- xs[,t_win]
+  ys_t <- ys[,t_win]
+  
+  #get number of individuals
+  n_inds <- nrow(xs_t)
+  n_times <- ncol(xs_t)
+  
+  #get together data for the event
+  together_t <- ff_data$together[,,t_win]
+  
+  #get all ff events within that time window
+  ff_events <- ff_data$events_detected
+  ff_events <- ff_events[which(ff_events$tidx >= t_start & ff_events$tidx <= t_end),]
+  inds_all <- unique(c(unlist(ff_events$group_A_idxs), unlist(ff_events$group_B_idxs)))
+  if(!sum(inds_all==0)==0){ #TODO: find soure of 0s in inds lists
+    inds_all <- inds_all[-which(inds_all==0)]
+  }
+  print(inds_all)
+  inds_all <- inds_all[order(inds_all)]
+  
+  #colors
+  cols <- rep('gray',n_inds)
+  
+  #get window for plotting
+  xmin <- min(xs_t[inds_all,],na.rm=T) - ff_data$R_outer
+  xmax <- max(xs_t[inds_all,],na.rm=T) + ff_data$R_outer
+  ymin <- min(ys_t[inds_all,],na.rm=T) - ff_data$R_outer
+  ymax <- max(ys_t[inds_all,],na.rm=T) + ff_data$R_outer
+  
+  #make the bottom left = 0,0
+  xs_t <- xs_t - xmin
+  ys_t <- ys_t - ymin
+  
+  #create the plot
+  quartz()
+  for(t in seq(1,n_times,t_step)){
+    #set up plot for that time step
+    plot(NULL, xlim = c(0, xmax-xmin), ylim = c(0, ymax-ymin), asp = 1,xlab = 'Distance E (m)', ylab = 'Distance N (m)')
+
+    #draw lines connecting individuals that are 'together'
+    for(i in 1:(n_inds-1)){
+      for(j in (i+1):n_inds){
+        if(!is.na(together_t[i,j,t])){
+          if(together_t[i,j,t]){
+            lines(c(xs_t[i,t], xs_t[j,t]), c(ys_t[i,t], ys_t[j,t]))
+          }
+        }
+      }
+    }
+
+    #draw points representing each individual, colored by subgroup
+    points(xs_t[,t], ys_t[,t], col = cols, pch = 19)
+    
+    #plot ff event markers
+    #get events to indicate with markers (markers appear for 1 time steps to be visible)
+    ff_events_curr <- ff_events[which(abs(ff_events$tidx - (t+t_start)) <= (1*t_step)),]
+    
+    #if there are any events in the time window, plot each one
+    if(nrow(ff_events_curr) > 0){
+      for(i in 1:nrow(ff_events_curr)){
+        tidx_curr <- ff_events_curr$tidx[i]
+        event_type <- ff_events_curr$event_type[i]
+        group_A_inds <- ff_events_curr$group_A_idxs[i][[1]]
+        group_B_inds <- ff_events_curr$group_B_idxs[i][[1]]
+        group_AB_inds <- c(group_A_inds, group_B_inds)
+        if(sum(group_AB_inds==0)==0){ #TODO: check why there are still some 0s in the inds lists... should be removed earlier, but this is a hack around it for now
+          x_centr <- mean(xs_t[group_AB_inds, tidx_curr-t_start],na.rm=T)
+          y_centr <- mean(ys_t[group_AB_inds, tidx_curr-t_start],na.rm=T)
+        }
+        if(event_type == 'fusion'){
+          points(x_centr, y_centr, pch = 1)
+        } else{
+          points(x_centr, y_centr, pch = 4)
+        }
+      }
+      
+    }
+    
+    
+    Sys.sleep(.1)
+  }
+  
+}
+
 visualize_ff_event <- function(ff_data, xs, ys, event_number, t_before = 600, t_after = 600, t_step = 5){
   
   #get the event data from the ff_data object
@@ -396,7 +487,7 @@ visualize_ff_event <- function(ff_data, xs, ys, event_number, t_before = 600, t_
   for(t in seq(1,n_times,t_step)){
     #set up plot for that time step
     plot(NULL, xlim = c(0, xmax-xmin), ylim = c(0, ymax-ymin), asp = 1,xlab = 'Distance E (m)', ylab = 'Distance N (m)', main = paste(event_data$event_type))
-
+    
     #draw lines connecting individuals that are 'together'
     for(i in 1:(n_inds-1)){
       for(j in (i+1):n_inds){
@@ -407,10 +498,12 @@ visualize_ff_event <- function(ff_data, xs, ys, event_number, t_before = 600, t_
         }
       }
     }
-
+    
     #draw points representing each individual, colored by subgroup
     points(xs_t[,t], ys_t[,t], col = cols, pch = 19)
     Sys.sleep(.1)
   }
   
 }
+
+
