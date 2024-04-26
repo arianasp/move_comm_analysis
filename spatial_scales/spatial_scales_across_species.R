@@ -63,8 +63,7 @@ plotdir <- '~/Dropbox/cross_species/spatial_scales/'
 setwd(codedir)
 source('ff_functions_library.R')
 
-#function to compute spatial scales and plot results
-#TODO: add documentation of parameters
+#Function to carry out spatial scales analysis and plot results
 #INPUTS:
 # xs: [n_inds x n_times matrix]: x coordinates (eastings) of all individuals - in meters
 # ys: [n_inds x n_times matrix]: y coordinates (northings) of all individuals - in meters
@@ -72,13 +71,13 @@ source('ff_functions_library.R')
 # heading_R: [numeric] spatial discretization value for heading computations (in meters)
 # speed_dt: [numeric (integer)] time step for computing individual speed
 # fpt_thresh: [numeric] threshold of first passage time over which a heading is not computed (because the individual is not moving so has undefined heading) - when headings are undefined they are replaced with NAs
-# largest_bin_quantile: [numeric between 0 and 1]: quantile to set as the largest dyadic distance bin
 # n_bins: [numeric (integer)] number of distance bins (logarithmically spaced)
 # plot: [boolean] whether to make plots or not
 # short_name: [character] name of the species/group to include in the plot (and as the plot output filename)
 # samprate: [numeric (integer)] sample rate of the trajectory data (for 1 Hz, should be 1, for 1 fix per 30 sec should be 30, etc)
 # plotdir: [character] path to plotting directory
 # plot_color: [character] color to make the plot (normally a hex string e.g. #FF0000 for red)
+# dyad_level: [boolean] whether to also compute metrics for each dyad separately
 #OUTPUTS:
 # out: a list containing the output data, including:
 #   out$dist_bins: [vector, numeric] dyadic distance bins used in the computations
@@ -93,13 +92,30 @@ source('ff_functions_library.R')
 #   out$speeds_lower: [vector, numeric] 25% quantiles of dyadic speed differences for each bin
 #   out$change_dyad_dist_upper: [vector, numeric] 75% quantiles of change in dyadic distance for each bin
 #   out$change_dyad_dist_lower: [vector, numeric] 25% quantiles of change in dyadic distance for each bin
+# If dyad_level == T, the metrics are also computed at the dyad level, resulting in the additional outputs:
+#   out$freq_dyad_dists_by_dyad: [array, n_inds x n_inds x n_bins, numeric] freq of dyadic dists for each dyad separately
+#   out$heads_mean_by_dyad: [array, n_inds x n_inds x n_bins] mean heading correlation vs dyadic distance, by dyad
+#   out$speeds_mean_by_dyad: [array, n_inds x n_inds x n_bins] mean speed difference vs dyadic distance, by dyad
+#   out$change_dyad_dist_mean_by_dyad: [array, n_inds x n_inds x n_bins, numeric] mean change in dyadic distance over the course of speed_dt for dyads within each distance bin, for each dyad separately
 # Plots produced:
 #   1. Histogram of log dyadic distance between pairs of inds (relevant spatial scales)
 #   2. Mean heading correlation as a function of dyadic distance between inds (directional coordination)
 #   3. Mean difference in speed between pairs of inds as a function of distance between them (speed coordination)
 #   4. Mean change in dyadic distance (over the course of speed_dt seconds) as a function of original dyadic distance
 
-calculate_spatial_scales <- function(xs, ys, heading_subsamp = 60, heading_R = 10, speed_dt = 60, fpt_thresh = 600, largest_bin_quantile = 0.999, n_bins = 20, plot = T, short_name = short_name, samprate = samprate, plotdir = '~/Dropbox/cross_species/spatial_scales/', plot_color = 'black'){
+calculate_spatial_scales <- function(xs,
+                                     ys,
+                                     heading_subsamp = 60,
+                                     heading_R = 10,
+                                     speed_dt = 60,
+                                     fpt_thresh = 600,
+                                     dist_bins = c(0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192),
+                                     plot = T,
+                                     short_name = short_name,
+                                     samprate = samprate,
+                                     plotdir = '~/Dropbox/cross_species/spatial_scales/',
+                                     plot_color = 'black',
+                                     dyad_level = T){
   #CALCULATE METRICS
   n_inds <- nrow(xs)
   n_times <- ncol(xs)
@@ -132,13 +148,6 @@ calculate_spatial_scales <- function(xs, ys, heading_subsamp = 60, heading_R = 1
     }
   }
 
-  #get distance bins - log spaced from 0 to max distance determined by 99.9% quantile of dyadic distances
-  max_dist <- quantile(dyad_dists, largest_bin_quantile, na.rm=T)
-  dist_bins <- c(0, 10^seq(0,log(max_dist,10), length.out=n_bins)) #distance bins to use (log spaced)
-
-  #hard code distance bins
-  dist_bins <- c(0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)
-
   #getting means for headings and speed diffs as a function of distance
   freq_dyad_dists <- heads_mean <- speeds_mean <- change_dyad_dist_mean <- rep(NA, length(dist_bins)-1)
   heads_upper <- speeds_upper <- change_dyad_dist_upper <- rep(NA, length(dist_bins)-1)
@@ -163,7 +172,34 @@ calculate_spatial_scales <- function(xs, ys, heading_subsamp = 60, heading_R = 1
     change_dyad_dist_lower[i] <- quantile(dyad_dist_changes[idxs], 0.25, na.rm=T)
   }
 
-  #PLOT
+  #getting means for headings and speed diffs as a function of distance and for each dyad separately
+  freq_dyad_dists_by_dyad <- heads_mean_by_dyad <- speeds_mean_by_dyad <- change_dyad_dist_mean_by_dyad <-
+  heads_upper_by_dyad <- speeds_upper_by_dyad <- change_dyad_dist_upper_by_dyad <- array(NA, dim = c(n_inds, n_inds, length(dist_bins)-1))
+  heads_lower_by_dyad <- speeds_lower_by_dyad <- change_dyad_dist_lower_by_dyad <- array(NA, dim = c(n_inds, n_inds, length(dist_bins)-1))
+  for(i in 1:(length(dist_bins)-1)){
+    for(ind1 in 1:(n_inds-1)){
+      for(ind2 in (ind1+1):n_inds){
+        dyad_dists_curr <- dyad_dists[ind1, ind2, ]
+        idxs <- which(dyad_dists_curr >= dist_bins[i] & dyad_dists_curr < dist_bins[i+1])
+        freq_dyad_dists_by_dyad[ind1, ind2, i] <- length(idxs)
+
+        #mean
+        heads_mean_by_dyad[ind1, ind2, i] <- mean(head_corrs[ind1, ind2, idxs], na.rm=T)
+        speeds_mean_by_dyad[ind1, ind2, i] <- mean(speed_diffs[ind1, ind2, idxs], na.rm=T)
+        change_dyad_dist_mean_by_dyad[ind1, ind2, i] <- mean(dyad_dist_changes[ind1, ind2, idxs], na.rm=T)
+
+        #upper quartile
+        heads_upper_by_dyad[ind1, ind2, i] <- quantile(head_corrs[ind1, ind2, idxs], 0.75, na.rm=T)
+        speeds_upper_by_dyad[ind1, ind2, i] <- quantile(speed_diffs[ind1, ind2, idxs], 0.75, na.rm=T)
+        change_dyad_dist_upper_by_dyad[ind1, ind2, i] <- quantile(dyad_dist_changes[ind1, ind2, idxs], 0.75, na.rm=T)
+
+        #lower quartile
+        heads_lower_by_dyad[i] <- quantile(head_corrs[ind1, ind2, idxs], 0.25, na.rm=T)
+        speeds_lower_by_dyad[i] <- quantile(speed_diffs[ind1, ind2, idxs], 0.25, na.rm=T)
+        change_dyad_dist_lower_by_dyad[i] <- quantile(dyad_dist_changes[ind1, ind2, idxs], 0.25, na.rm=T)
+      }
+    }
+  }
 
   #middle of the bins for plotting
   mids <- (dist_bins[1:(length(dist_bins)-1)] + dist_bins[2:length(dist_bins)])/2
@@ -183,9 +219,25 @@ calculate_spatial_scales <- function(xs, ys, heading_subsamp = 60, heading_R = 1
                change_dyad_dist_lower = change_dyad_dist_lower
                )
 
+  #dyad level metrics, if they were computed
+  if(dyad_level == T){
+    out$freq_dyad_dists_by_dyad <- freq_dyad_dists_by_dyad
+    out$heads_mean_by_dyad <- heads_mean_by_dyad
+    out$speeds_mean_by_dyad <- speeds_mean_by_dyad
+    out$change_dyad_dist_mean_by_dyad <-change_dyad_dist_mean_by_dyad
+    out$heads_upper_by_dyad <- heads_upper_by_dyad
+    out$speeds_upper_by_dyad <- speeds_upper_by_dyad
+    out$change_dyad_dist_upper_by_dyad <-change_dyad_dist_upper_by_dyad
+    out$heads_lower_by_dyad <- heads_lower_by_dyad
+    out$speeds_lower_by_dyad <- speeds_lower_by_dyad
+    out$change_dyad_dist_lower_by_dyad <-change_dyad_dist_lower_by_dyad
+  }
+
+
   #PLOT
   if(plot){
 
+    #ACROSS ALL DYADS
     #set up plot
     quartz(width=13, height = 4)
     par(mfrow=c(1,4), mar = c(5,5,1,1))
@@ -222,6 +274,66 @@ calculate_spatial_scales <- function(xs, ys, heading_subsamp = 60, heading_R = 1
     abline(v=c(0,1,10,100,1000,10000), lty = 2)
 
     dev.copy2pdf(file = paste0(plotdir,'spatial_scales_', short_name,'.pdf'))
+
+    if(dyad_level){
+      #BY DYAD (no error bars)
+      #set up plot
+      quartz(width=13, height = 4)
+      par(mfrow=c(1,4), mar = c(5,5,1,1))
+      non_na_idxs <- which(!is.na(heads_mean))
+
+      #don't plot points when there is too little data going into them
+      for(i in 1:(n_inds-1)){
+        for(j in (i+1):n_inds){
+          too_little_data_idxs <- which(freq_dyad_dists_by_dyad[i,j,] < 1000)
+          heads_mean_by_dyad[i,j,too_little_data_idxs] <- NA
+          speeds_mean_by_dyad[i,j,too_little_data_idxs] <- NA
+          change_dyad_dist_mean_by_dyad[i,j,too_little_data_idxs] <- NA
+        }
+      }
+
+      #Plot 1: Distribution of log(dyadic distances) between hyenas
+      plot(NULL, xlab = 'Distance apart (m)', ylab = 'Probability', pch = 19, col = alpha(plot_color, 0.5), cex = 1.5, ylim = c(0,max(frac_dyad_dists,na.rm=T)), xlim = c(mids[1], mids[length(mids)]), cex.lab=2, cex.axis=1.5, log='x',type='l',lwd=2, main = short_name)
+      for(i in 1:(n_inds-1)){
+        for(j in (i+1):n_inds){
+          frac_dyad_dists_by_dyad <- freq_dyad_dists_by_dyad[i,j,] / sum(freq_dyad_dists_by_dyad[i,j,])
+          lines(mids,frac_dyad_dists, col = alpha(plot_color, 0.5))
+        }
+      }
+      abline(v=c(0,1,10,100,1000,10000), lty = 2)
+
+      #Plot 2: Mean heading correlation as a function of distance
+      plot(NULL, xlab = 'Distance apart (m)', ylab = 'Mean heading correlation', pch = 19, col = alpha(plot_color, 0.5), cex = 1.5, ylim = c(-1,1),cex.lab=2, cex.axis=1.5, log='x', main = short_name, xlim = c(mids[1], mids[length(mids)]))
+      for(i in 1:(n_inds-1)){
+        for(j in (i+1):n_inds){
+          lines(mids,heads_mean_by_dyad[i,j,], col = alpha(plot_color, 0.5))
+        }
+      }
+      abline(h=0, lty = 2, lwd = 2)
+      abline(v=c(0,1,10,100,1000,10000), lty = 2)
+
+      #Plot 3: Mean difference in speed as a function of distance
+      plot(NULL, xlab = 'Distance apart (m)', ylab = 'Mean absolute speed difference (m/min)', pch = 19, col = alpha(plot_color, 0.5), cex = 2, ylim = c(0,max(speeds_mean_by_dyad,na.rm=T)),cex.lab=2, cex.axis=1.5, log='x', main = short_name, xlim = c(mids[1], mids[length(mids)]))
+      for(i in 1:(n_inds-1)){
+        for(j in (i+1):n_inds){
+          lines(mids,speeds_mean_by_dyad[i,j,], col = alpha(plot_color, 0.5))
+        }
+      }
+      abline(h=0, lty = 2, lwd = 2)
+      abline(v=c(0,1,10,100,1000,10000), lty = 2)
+
+      #Plot 4: Mean change in dyadic distane as a function of original dyadic distance
+      plot(NULL, xlab = 'Distance apart (m)', ylab = 'Mean speed of divergence (m/min)', pch = 19, col = alpha(plot_color, 0.5), cex = 2, ylim = c(min(change_dyad_dist_mean_by_dyad,na.rm=T),max(change_dyad_dist_mean_by_dyad,na.rm=T)),cex.lab=2, cex.axis=1.5, log='x', main = short_name, xlim = c(mids[1], mids[length(mids)]))
+      for(i in 1:(n_inds-1)){
+        for(j in (i+1):n_inds){
+          lines(mids,change_dyad_dist_mean_by_dyad[i,j,], col = alpha(plot_color, 0.5))
+        }
+      }
+      abline(h=0, lty = 2, lwd = 2)
+      abline(v=c(0,1,10,100,1000,10000), lty = 2)
+
+      dev.copy2pdf(file = paste0(plotdir,'spatial_scales_by_dyad_', short_name,'.pdf'))
+    }
   }
 
   invisible(out)
@@ -240,7 +352,7 @@ params <- list(files = files,
 
 #load data and run spatial scales computation, produce plots
 scales_data <- list()
-for(i in 1:length(files)){
+for(i in c(3,1:length(files))){
 
   datafile <- files[i]
 
@@ -323,7 +435,7 @@ for(i in 1:length(files)){
   }
 
   #calculate metrics and plot
-  out <- calculate_spatial_scales(xs = xs, ys = ys, heading_subsamp=heading_subsamp, heading_R = heading_R, short_name = short_names[i], samprate = samprate, n_bins = n_bins, plotdir = plotdir, plot_color = plot_color)
+  out <- calculate_spatial_scales(xs = xs, ys = ys, heading_subsamp=heading_subsamp, heading_R = heading_R, short_name = short_names[i], samprate = samprate, plotdir = plotdir, plot_color = plot_color)
   rm(list = c('xs','ys'))
 
   if(exists('dayIdx')){
