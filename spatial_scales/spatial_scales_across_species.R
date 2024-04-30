@@ -149,7 +149,7 @@ calculate_spatial_scales <- function(xs,
   }
 
   #getting means for headings and speed diffs as a function of distance
-  freq_dyad_dists <- heads_mean <- speeds_mean <- change_dyad_dist_mean <- rep(NA, length(dist_bins)-1)
+  freq_dyad_dists <- heads_mean <- speeds_mean <- change_dyad_dist_mean <- p_approach <- rep(NA, length(dist_bins)-1)
   heads_upper <- speeds_upper <- change_dyad_dist_upper <- rep(NA, length(dist_bins)-1)
   heads_lower <- speeds_lower <- change_dyad_dist_lower <- rep(NA, length(dist_bins)-1)
   for(i in 1:(length(dist_bins)-1)){
@@ -170,16 +170,21 @@ calculate_spatial_scales <- function(xs,
     heads_lower[i] <- quantile(head_corrs[idxs], 0.25, na.rm=T)
     speeds_lower[i] <- quantile(speed_diffs[idxs], 0.25, na.rm=T)
     change_dyad_dist_lower[i] <- quantile(dyad_dist_changes[idxs], 0.25, na.rm=T)
+
+    #prob approach
+    p_approach[i] <- mean(dyad_dist_changes[idxs] < 0, na.rm=T)
   }
 
   #getting means for headings and speed diffs as a function of distance and for each dyad separately
-  freq_dyad_dists_by_dyad <- heads_mean_by_dyad <- speeds_mean_by_dyad <- change_dyad_dist_mean_by_dyad <-
+  freq_dyad_dists_by_dyad <- heads_mean_by_dyad <- speeds_mean_by_dyad <- change_dyad_dist_mean_by_dyad <- p_approach_by_dyad <- array(NA, dim = c(n_inds, n_inds, length(dist_bins)-1))
   heads_upper_by_dyad <- speeds_upper_by_dyad <- change_dyad_dist_upper_by_dyad <- array(NA, dim = c(n_inds, n_inds, length(dist_bins)-1))
   heads_lower_by_dyad <- speeds_lower_by_dyad <- change_dyad_dist_lower_by_dyad <- array(NA, dim = c(n_inds, n_inds, length(dist_bins)-1))
-  for(i in 1:(length(dist_bins)-1)){
-    for(ind1 in 1:(n_inds-1)){
-      for(ind2 in (ind1+1):n_inds){
-        dyad_dists_curr <- dyad_dists[ind1, ind2, ]
+
+  for(ind1 in 1:(n_inds-1)){
+    for(ind2 in (ind1+1):n_inds){
+      dyad_dists_curr <- dyad_dists[ind1, ind2, ]
+      for(i in 1:(length(dist_bins)-1)){
+
         idxs <- which(dyad_dists_curr >= dist_bins[i] & dyad_dists_curr < dist_bins[i+1])
         freq_dyad_dists_by_dyad[ind1, ind2, i] <- length(idxs)
 
@@ -194,9 +199,12 @@ calculate_spatial_scales <- function(xs,
         change_dyad_dist_upper_by_dyad[ind1, ind2, i] <- quantile(dyad_dist_changes[ind1, ind2, idxs], 0.75, na.rm=T)
 
         #lower quartile
-        heads_lower_by_dyad[i] <- quantile(head_corrs[ind1, ind2, idxs], 0.25, na.rm=T)
-        speeds_lower_by_dyad[i] <- quantile(speed_diffs[ind1, ind2, idxs], 0.25, na.rm=T)
-        change_dyad_dist_lower_by_dyad[i] <- quantile(dyad_dist_changes[ind1, ind2, idxs], 0.25, na.rm=T)
+        heads_lower_by_dyad[ind1, ind2, i] <- quantile(head_corrs[ind1, ind2, idxs], 0.25, na.rm=T)
+        speeds_lower_by_dyad[ind1, ind2, i] <- quantile(speed_diffs[ind1, ind2, idxs], 0.25, na.rm=T)
+        change_dyad_dist_lower_by_dyad[ind1, ind2, i] <- quantile(dyad_dist_changes[ind1, ind2, idxs], 0.25, na.rm=T)
+
+        #prob approach
+        p_approach_by_dyad[ind1, ind2, i] <- mean(dyad_dist_changes[ind1, ind2, idxs] < 0, na.rm=T)
       }
     }
   }
@@ -216,7 +224,8 @@ calculate_spatial_scales <- function(xs,
                speeds_upper = speeds_upper,
                speeds_lower = speeds_lower,
                change_dyad_dist_upper = change_dyad_dist_upper,
-               change_dyad_dist_lower = change_dyad_dist_lower
+               change_dyad_dist_lower = change_dyad_dist_lower,
+               p_approach = p_approach
                )
 
   #dyad level metrics, if they were computed
@@ -231,6 +240,7 @@ calculate_spatial_scales <- function(xs,
     out$heads_lower_by_dyad <- heads_lower_by_dyad
     out$speeds_lower_by_dyad <- speeds_lower_by_dyad
     out$change_dyad_dist_lower_by_dyad <-change_dyad_dist_lower_by_dyad
+    out$p_approach_by_dyad <- p_approach_by_dyad
   }
 
 
@@ -239,8 +249,8 @@ calculate_spatial_scales <- function(xs,
 
     #ACROSS ALL DYADS
     #set up plot
-    quartz(width=13, height = 4)
-    par(mfrow=c(1,4), mar = c(5,5,1,1))
+    quartz(width=16, height = 4)
+    par(mfrow=c(1,5), mar = c(5,5,1,1))
     non_na_idxs <- which(!is.na(heads_mean))
 
     #don't plot points when there is too little data going into them
@@ -273,13 +283,18 @@ calculate_spatial_scales <- function(xs,
     abline(h=0, lty = 2, lwd = 2)
     abline(v=c(0,1,10,100,1000,10000), lty = 2)
 
+    #Plot 5: Probability of approaching vs initial distance apart
+    plot(mids,p_approach, xlab = 'Distance apart (m)', ylab = 'P(approach)', pch = 19, col = alpha(plot_color, 0.5), cex = 2, ylim = c(0,1), cex.lab=2, cex.axis=1.5, log='x', main = short_name)
+    abline(h=0, lty = 2, lwd = 2)
+    abline(v=c(0,1,10,100,1000,10000), lty = 2)
+
     dev.copy2pdf(file = paste0(plotdir,'spatial_scales_', short_name,'.pdf'))
 
     if(dyad_level){
       #BY DYAD (no error bars)
       #set up plot
-      quartz(width=13, height = 4)
-      par(mfrow=c(1,4), mar = c(5,5,1,1))
+      quartz(width=16, height = 4)
+      par(mfrow=c(1,5), mar = c(5,5,1,1))
       non_na_idxs <- which(!is.na(heads_mean))
 
       #don't plot points when there is too little data going into them
@@ -332,6 +347,16 @@ calculate_spatial_scales <- function(xs,
       abline(h=0, lty = 2, lwd = 2)
       abline(v=c(0,1,10,100,1000,10000), lty = 2)
 
+      #Plot 5: Probability of approaching as a function of original dyadic distance
+      plot(NULL, xlab = 'Distance apart (m)', ylab = 'P(approach)', pch = 19, col = alpha(plot_color, 0.5), cex = 2, ylim = c(0,1),cex.lab=2, cex.axis=1.5, log='x', main = short_name, xlim = c(mids[1], mids[length(mids)]))
+      for(i in 1:(n_inds-1)){
+        for(j in (i+1):n_inds){
+          lines(mids,p_approach_by_dyad[i,j,], col = alpha(plot_color, 0.5))
+        }
+      }
+      abline(h=0, lty = 2, lwd = 2)
+      abline(v=c(0,1,10,100,1000,10000), lty = 2)
+
       dev.copy2pdf(file = paste0(plotdir,'spatial_scales_by_dyad_', short_name,'.pdf'))
     }
   }
@@ -352,7 +377,7 @@ params <- list(files = files,
 
 #load data and run spatial scales computation, produce plots
 scales_data <- list()
-for(i in c(3,1:length(files))){
+for(i in 1:c(length(files))){
 
   datafile <- files[i]
 
@@ -448,6 +473,8 @@ for(i in c(3,1:length(files))){
 
 
 }
+
+save(list = 'scales_data','params', file = '~/Dropbox/cross_species/spatial_scales/scales_data.RData')
 
 
 
