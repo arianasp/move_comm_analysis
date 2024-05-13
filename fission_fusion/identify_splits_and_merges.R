@@ -1,4 +1,5 @@
 library(lubridate)
+library(dbscan)
 
 #DETECT FF EVENTS
 #Detect fissions and fusions using "sticky-DBSCAN" method from Libera et al.
