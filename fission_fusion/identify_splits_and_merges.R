@@ -36,6 +36,8 @@ library(dbscan)
 # xs, ys: [n_inds x n_times matrices] of x and y UTM coordinates
 # ts: vector of timestamps
 # coati_ids: coati ids data frame
+# breaks: indexes to breaks in the data (default NULL treats data as a contiguous sequence) - overrides break_by_day
+# break_by_day: whether to break up data by date (boolean)
 #OUTPUTS:
 # out: a list of outputs containing
 #   out$events_detected: data frame with info on detected fissions and fusions.
@@ -51,7 +53,7 @@ library(dbscan)
 #     connected (1) or not (0) or unknown (NA)
 #   changes: data frame containing all the subgroups membership changes (not
 #     just ones identified as fissions or fusions)
-detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts = ts, names = NULL, verbose = T){
+detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts = ts, breaks = c(1, length(ts)+1), names = NULL, break_by_day = T, verbose = T){
 
   #----Identify subgroups at each point
   if(verbose){print('Identifying subgroups at each point using sticky DBSCAN')}
@@ -60,12 +62,14 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
   n_times <- ncol(xs)
 
   #day start indexes
-  days <- date(ts)
-  day_start_idxs <- c(1, which(diff(days)==1)+1)
-  day_start_idxs <- c(day_start_idxs, length(ts)+1)
-
-  #need to make sure we don't lose the last day - currently we get an error down the road when we run this though
-  #day_start_idxs <- c(day_start_idxs, length(ts)+1)
+  if(break_by_day){
+    days <- date(ts)
+    day_start_idxs <- c(1, which(diff(days)==1)+1)
+    day_start_idxs <- c(day_start_idxs, length(ts)+1)
+    if(!exists('breaks')){
+      breaks <- day_start_idxs
+    }
+  }
 
   #Get dyadic distances for each pair, then use double threhsold method to determine if htey are otgether at any moment
   dyad_dists <- together <- array(NA, dim = c(n_inds, n_inds, n_times))
@@ -79,10 +83,10 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
 
       #together or not
       #loop over days. for each day...
-      for(d in 1:(length(day_start_idxs)-1)){
+      for(d in 1:(length(breaks)-1)){
 
         #get times for that day
-        t_day <- day_start_idxs[d]:(day_start_idxs[d+1]-1)
+        t_day <- breaks[d]:(breaks[d+1]-1)
 
         #dyadic distances on that day
         dyad_dists_ij <- dyad_dists[i,j,t_day]
@@ -199,8 +203,8 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
 
   if(verbose){print('Identifying changes in group membership')}
   event_times <- c()
-  for(d in 1:(length(day_start_idxs)-1)){
-    t_day <- day_start_idxs[d]:(day_start_idxs[d+1]-1)
+  for(d in 1:(length(breaks)-1)){
+    t_day <- breaks[d]:(breaks[d+1]-1)
     for(t in t_day[1:(length(t_day)-1)]){
       groups_curr <- groups_list[[t]]
       groups_next <- groups_list[[t+1]]
