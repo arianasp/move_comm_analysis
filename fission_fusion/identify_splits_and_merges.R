@@ -1,3 +1,5 @@
+library(lubridate)
+
 #DETECT FF EVENTS
 #Detect fissions and fusions using "sticky-DBSCAN" method from Libera et al.
 #Start by defining an adjacency matrix ('together' in the code) of which dyads
@@ -49,58 +51,58 @@
 #   changes: data frame containing all the subgroups membership changes (not
 #     just ones identified as fissions or fusions)
 detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts = ts, names = NULL, verbose = T){
-  
+
   #----Identify subgroups at each point
   if(verbose){print('Identifying subgroups at each point using sticky DBSCAN')}
   #number of inds and times
   n_inds <- nrow(xs)
   n_times <- ncol(xs)
-  
+
   #day start indexes
   days <- date(ts)
   day_start_idxs <- c(1, which(diff(days)==1)+1)
   day_start_idxs <- c(day_start_idxs, length(ts)+1)
-  
+
   #need to make sure we don't lose the last day - currently we get an error down the road when we run this though
   #day_start_idxs <- c(day_start_idxs, length(ts)+1)
-  
+
   #Get dyadic distances for each pair, then use double threhsold method to determine if htey are otgether at any moment
   dyad_dists <- together <- array(NA, dim = c(n_inds, n_inds, n_times))
   for(i in 1:(n_inds-1)){
     for(j in (i+1):n_inds){
-      
+
       #dyadic distance
       dx <- xs[i,] - xs[j,]
       dy <- ys[i,] - ys[j,]
       dyad_dists[i,j,] <- sqrt(dx^2 + dy^2)
-      
+
       #together or not
       #loop over days. for each day...
       for(d in 1:(length(day_start_idxs)-1)){
-        
+
         #get times for that day
         t_day <- day_start_idxs[d]:(day_start_idxs[d+1]-1)
-        
+
         #dyadic distances on that day
         dyad_dists_ij <- dyad_dists[i,j,t_day]
-        
+
         if(sum(!is.na(dyad_dists_ij))==0){
           next
         }
-        
+
         #times when together within inner radius
         together_inner <- dyad_dists_ij <= R_inner
-        
+
         #times when together within outer radius
         together_outer <- dyad_dists_ij <= R_outer
-        
+
         together_ij <- together_inner
-        
+
         if(sum(together_inner,na.rm=T)==0){
           together[i,j,t_day] <- together[j,i,t_day] <- together_ij
           next
         }
-        
+
         #go backwards from crossing points into inner radius to find the 'starts' when crossed the outer radius
         inner_starts <- which(diff(together_inner)==1)+1
         if(length(inner_starts)==0){
@@ -123,11 +125,11 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
               start <- curr_time + 1
               break
             }
-            
+
           }
           together_ij[start:crossing] <- T
         }
-        
+
         #go forwards from crossing points out of outer radius to find the 'ends' when crossed the outer radius
         inner_ends <- which(diff(together_inner)==-1)
         if(length(inner_ends)==0){
@@ -150,17 +152,17 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
               end <- curr_time - 1
               break
             }
-            
+
           }
           together_ij[crossing:end] <- T
         }
-        
+
         together[i,j,t_day] <- together[j,i,t_day] <- together_ij
-        
+
       }
     }
   }
-  
+
   #Identify groups from together matrices
   groups <- matrix(NA, nrow = n_inds, ncol = n_times)
   for(t in 1:n_times){
@@ -173,27 +175,27 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
     grps.non.nas <- dbscan(x = as.dist(1 - non.nas.together), eps = .1,minPts=1)$cluster
     groups[non.nas, t] <- grps.non.nas
   }
-  
+
   #store groups as lists of lists
   groups_list <- list()
   for(t in 1:n_times){
-    
+
     #create a list to hold the groups at that timestep
     groups_list[[t]] <- list()
     if(sum(!is.na(groups[,t]))==0){
       next
     }
-    
+
     #
     max_group_id <- max(groups[,t],na.rm=T)
     for(i in seq(1,max_group_id)){
       groups_list[[t]][[i]] <- which(groups[,t]==i)
     }
-    
+
   }
-  
+
   #Identifying changes in group membership in consecutive time steps
-  
+
   if(verbose){print('Identifying changes in group membership')}
   event_times <- c()
   for(d in 1:(length(day_start_idxs)-1)){
@@ -223,7 +225,7 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
       }
     }
   }
-  
+
   if(verbose){print('Finding fissions and fusion')}
   #go through event times and classify events into types
   changes <- data.frame(tidx = event_times)
@@ -239,30 +241,30 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
     changes$n_inds_curr[i] <- sum(unlist(lapply(groups_curr, length)))
     changes$n_inds_next[i] <- sum(unlist(lapply(groups_next, length)))
   }
-  
+
   changes$event_type[which(changes$n_groups_curr < changes$n_groups_next & changes$n_inds_curr==changes$n_inds_next)] <- 'fission'
   changes$event_type[which(changes$n_groups_curr > changes$n_groups_next & changes$n_inds_curr==changes$n_inds_next)] <- 'fusion'
-  
+
   #get groups for fissions and fusions
   changes$group_A_idxs <- changes$group_A <- changes$group_B_idxs <- changes$group_B <- list(c(0))
   fissions <- which(changes$event_type=='fission')
   fusions <- which(changes$event_type=='fusion')
-  
+
   #Identify which subgroups split or merged
   if(verbose){print('Determinig which subgroups split and merged')}
   for(i in fissions){
-    
+
     groups_curr <- groups_list[[changes$tidx[i]]]
     groups_next <- groups_list[[changes$tidx[i]+1]]
     n_groups_next <- changes$n_groups_next[i]
     n_groups_curr <- changes$n_groups_curr[i]
-    
+
     #if there are only 2 groups at the end, then name them A and B
     if(n_groups_next==2){
       changes$group_A_idxs[i] <- groups_next[1]
       changes$group_B_idxs[i] <- groups_next[2]
     }
-    
+
     #if there are more than 2 groups, need to figure out which one changed
     if(n_groups_next > 2){
       matched_groups <- c()
@@ -285,23 +287,23 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
         warning(paste('Could not identify unambiguously subgroups for event',i,
                       'due to more than 2 unmatched subgroups'))
       }
-      
+
     }
   }
-  
+
   for(i in fusions){
-    
+
     groups_curr <- groups_list[[changes$tidx[i]]]
     groups_next <- groups_list[[changes$tidx[i]+1]]
     n_groups_next <- changes$n_groups_next[i]
     n_groups_curr <- changes$n_groups_curr[i]
-    
+
     #if there are only 2 groups at the start, then name them A and B
     if(n_groups_curr==2){
       changes$group_A_idxs[i] <- groups_curr[1]
       changes$group_B_idxs[i] <- groups_curr[2]
     }
-    
+
     #if there are more than 2 groups, need to figure out which one changed
     if(n_groups_curr > 2){
       matched_groups <- c()
@@ -324,10 +326,10 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
         warning(paste('Could not identify unambiguously subgroups for event',i,
                       'due to more than 2 unmatched subgroups'))
       }
-      
+
     }
   }
-  
+
   #get names if not null
   if(!is.null(names)){
     for(i in c(fissions,fusions)){
@@ -335,24 +337,24 @@ detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts =
       changes$group_B[i] <- list(names[changes$group_B_idxs[i][[1]]])
     }
   }
-  
+
   #final events dataframe (call it events_detected)
   events_detected <- changes[c(fissions, fusions),c('tidx','datetime','event_type','group_A_idxs','group_B_idxs','group_A','group_B')]
-  
+
   #get number of individuals in each subgroup
   events_detected$n_A <- sapply(events_detected$group_A_idxs, length)
   events_detected$n_B <- sapply(events_detected$group_B_idxs, length)
-  
+
   #sort by time
   events_detected <- events_detected[order(events_detected$tidx),]
-  
+
   #add index column
   events_detected$event_idx <- 1:nrow(events_detected)
-  
+
   if(verbose){print('Done.')}
-  
+
   #return things
   out <- list(events_detected = events_detected, groups_list = groups_list, together = together, changes = changes, R_inner = R_inner, R_outer = R_outer)
   return(out)
-  
+
 }
