@@ -1,7 +1,7 @@
 library(lubridate)
 library(dbscan)
 
-#DETECT FF EVENTS
+#IDENTIFY SPLITS AND MERGES (FORMERLY DETECT_FISSIONS_AND_FUSIONS)
 #Detect fissions and fusions using "sticky-DBSCAN" method from Libera et al.
 #Start by defining an adjacency matrix ('together' in the code) of which dyads
 #are "connected" at any moment in time. Dyads are considered to be connected if
@@ -53,7 +53,7 @@ library(dbscan)
 #     connected (1) or not (0) or unknown (NA)
 #   changes: data frame containing all the subgroups membership changes (not
 #     just ones identified as fissions or fusions)
-detect_fissions_and_fusions <- function(R_inner, R_outer, xs = xs, ys = ys, ts = ts, breaks = c(1, length(ts)+1), names = NULL, break_by_day = T, verbose = T){
+identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = ts, breaks = c(1, length(ts)+1), names = NULL, break_by_day = T, verbose = T){
 
   #----Identify subgroups at each point
   if(verbose){print('Identifying subgroups at each point using sticky DBSCAN')}
