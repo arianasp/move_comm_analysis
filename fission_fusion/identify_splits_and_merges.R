@@ -53,7 +53,7 @@ library(dbscan)
 #     connected (1) or not (0) or unknown (NA)
 #   changes: data frame containing all the subgroups membership changes (not
 #     just ones identified as fissions or fusions)
-identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = ts, breaks = c(1, length(ts)+1), names = NULL, break_by_day = T, verbose = T){
+identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = ts, breaks = c(1, length(ts)+1), names = NULL, break_by_day = F, verbose = T){
 
   #----Identify subgroups at each point
   if(verbose){print('Identifying subgroups at each point using sticky DBSCAN')}
@@ -230,136 +230,169 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
       }
     }
   }
-
-  if(verbose){print('Finding fissions and fusion')}
-  #go through event times and classify events into types
-  changes <- data.frame(tidx = event_times)
-  changes$datetime <- ts[changes$tidx]
-  changes$event_type <- NA
-  changes$n_groups_curr <- unlist(lapply(groups_list, length))[event_times]
-  changes$n_groups_next <- unlist(lapply(groups_list, length))[event_times+1]
-  changes$n_inds_curr <- changes$n_inds_next <- NA
-  for(i in 1:nrow(changes)){
-    t <- changes$tidx[i]
+  
+  #NEW STUFF
+  #for each time when the subgrouping patterns changed...
+  all_events_info <- list()
+  event_idx <- 1
+  for(tidx in 1:length(event_times)){
+    print(tidx)
+    t <- event_times[tidx]
+    
+    #get groups before and after
     groups_curr <- groups_list[[t]]
     groups_next <- groups_list[[t+1]]
-    changes$n_inds_curr[i] <- sum(unlist(lapply(groups_curr, length)))
-    changes$n_inds_next[i] <- sum(unlist(lapply(groups_next, length)))
-  }
-
-  changes$event_type[which(changes$n_groups_curr < changes$n_groups_next & changes$n_inds_curr==changes$n_inds_next)] <- 'fission'
-  changes$event_type[which(changes$n_groups_curr > changes$n_groups_next & changes$n_inds_curr==changes$n_inds_next)] <- 'fusion'
-
-  #get groups for fissions and fusions
-  changes$group_A_idxs <- changes$group_A <- changes$group_B_idxs <- changes$group_B <- list(c(0))
-  fissions <- which(changes$event_type=='fission')
-  fusions <- which(changes$event_type=='fusion')
-
-  #Identify which subgroups split or merged
-  if(verbose){print('Determinig which subgroups split and merged')}
-  for(i in fissions){
-
-    groups_curr <- groups_list[[changes$tidx[i]]]
-    groups_next <- groups_list[[changes$tidx[i]+1]]
-    n_groups_next <- changes$n_groups_next[i]
-    n_groups_curr <- changes$n_groups_curr[i]
-
-    #if there are only 2 groups at the end, then name them A and B
-    if(n_groups_next==2){
-      changes$group_A_idxs[i] <- groups_next[1]
-      changes$group_B_idxs[i] <- groups_next[2]
+    
+    #remove any individuals who are not present in one or the other timestep from both timesteps
+    inds_present_curr <- unlist(groups_curr)
+    inds_present_next <- unlist(groups_next)
+    inds_to_remove <- setdiff(inds_present_curr, inds_present_next) 
+    if(length(inds_to_remove)>0){
+      for(g in 1:length(groups_curr)){
+        for(i in 1:length(groups_curr[[g]])){
+          if(groups_curr[[g]][i] %in% inds_to_remove){
+            groups_curr[[g]] <- groups_curr[[g]][-i]
+          }
+        }
+      }
+      for(g in 1:length(groups_next)){
+        for(i in 1:length(groups_next[[g]])){
+          if(groups_next[[g]][i] %in% inds_to_remove){
+            groups_next[[g]] <- groups_next[[g]][-i]
+          }
+        }
+      }
     }
-
-    #if there are more than 2 groups, need to figure out which one changed
-    if(n_groups_next > 2){
-      matched_groups <- c()
+    
+    #remove any now-empty groups from groups_curr and groups_next
+    g <- 1
+    gmax <- length(groups_curr)
+    while(g <= gmax){
+      if(length(groups_curr[[g]])==0){
+        groups_curr[[g]] <- NULL
+        g <- g - 1
+        gmax <- gmax - 1
+      }
+      g <- g + 1
+    }
+    g <- 1
+    gmax <- length(groups_next)
+    while(g <= gmax){
+      if(length(groups_next[[g]])==0){
+        groups_next[[g]] <- NULL
+        g <- g - 1
+        gmax <- gmax - 1
+      }
+      g <- g + 1
+    }
+    
+    #find sets of connected groups across the current and future timestep
+    #construct a directed network connection_net[i,j] where the rows represent groups in the 
+    #current timestep and the cols represent groups in the next timestep. Define
+    #connection_net[i,j] = 1 if group i from the current timestep and group j from the next
+    #timestep share a member, and 0 otherwise. 
+    n_groups_curr <- length(groups_curr)
+    n_groups_next <- length(groups_next)
+    connection_net <- matrix(F, nrow = n_groups_curr, ncol = n_groups_next)
+    for(i in 1:n_groups_curr){
       for(j in 1:n_groups_next){
-        matched <- F
-        for(k in 1:n_groups_curr){
-          if(setequal(groups_next[[j]], groups_curr[[k]])){
-            matched <- T
+        if(length(intersect(groups_curr[[i]], groups_next[[j]])) > 0){
+          connection_net[i,j] <- T
+        }
+      }
+    }
+    
+    #get connected components of the bipartite network
+    remaining_groups_A <- 1:nrow(connection_net)
+    remaining_groups_B <- 1:ncol(connection_net)
+    idx <- 1
+    component_groups_A <- component_groups_B <- list()
+    while(length(remaining_groups_A) > 0){
+      seed_A <- remaining_groups_A[1]
+      
+      grps_A <- c(seed_A)
+      grps_B <- c()
+      grps_A_orig <- grps_A
+      grps_B_orig <- grps_B
+      
+      while(setequal(grps_A_orig, grps_A) & setequal(grps_B_orig,grps_B)){
+        grps_A_orig <- grps_A
+        grps_B_orig <- grps_B
+        for(i in 1:length(grps_A)){
+          grps_B <- union(grps_B, which(connection_net[grps_A[i],]))
+        }
+        for(i in 1:length(grps_B)){
+          grps_A <- union(grps_A, which(connection_net[,grps_B[i]]))
+        }
+      }
+      
+      component_groups_A[[idx]] <- c(grps_A)
+      component_groups_B[[idx]] <- c(grps_B)
+      idx <- idx + 1
+      remaining_groups_A <- setdiff(remaining_groups_A, grps_A)
+      remaining_groups_B <- setdiff(remaining_groups_B, grps_B)
+      
+    }
+    
+    #remove instances where group did not change (one to one connections between groups)
+    i <- 1
+    while(i <= length(component_groups_A)){
+      if(length(component_groups_A[[i]])==1 & length(component_groups_B[[i]])==1){
+        component_groups_A[[i]] <- component_groups_B[[i]] <- NULL
+        i <- i - 1
+      }
+      i <- i + 1
+    }
+    
+    #for each of the component events
+    if(length(component_groups_A)>0){
+      for(i in 1:length(component_groups_A)){
+        #classify into event types and store subgroup memberships in a data frame
+        component_groups_before <- component_groups_A[[i]]
+        component_groups_after <- component_groups_B[[i]]
+        n_groups_before <- length(component_groups_before)
+        n_groups_after <- length(component_groups_after)
+        if(n_groups_before == 1){
+          event_type <- 'fission'
+        } else{
+          if(n_groups_after == 1){
+            event_type <- 'fusion'
+            } else{
+              event_type <- 'shuffle'
           }
         }
-        if(matched){
-          matched_groups <- c(matched_groups, j)
+        
+        groups_before <- list()
+        groups_after <- list()
+        for(g in 1:n_groups_before){
+          groups_before[[g]] <- list(groups_curr[[component_groups_before[[g]]]])
         }
+        for(g in 1:n_groups_after){
+          groups_after[[g]] <- list(groups_next[[component_groups_after[[g]]]])
+        }
+        
+        #store data
+        n_groups_before <- length(groups_before)
+        n_groups_after <- length(groups_after)
+        event_info <- list(t = t, groups_before = groups_before, groups_after = groups_after, event_type = event_type, n_groups_before = n_groups_before, n_groups_after = n_groups_after)
+        all_events_info[[event_idx]] <- event_info
+        event_idx <- event_idx + 1
       }
-      unmatched_groups <- setdiff(1:n_groups_next, matched_groups)
-      if(length(unmatched_groups)==2){
-        changes$group_A_idxs[i] <- groups_next[unmatched_groups[1]]
-        changes$group_B_idxs[i] <- groups_next[unmatched_groups[2]]
-      }else{
-        warning(paste('Could not identify unambiguously subgroups for event',i,
-                      'due to more than 2 unmatched subgroups'))
-      }
-
     }
   }
-
-  for(i in fusions){
-
-    groups_curr <- groups_list[[changes$tidx[i]]]
-    groups_next <- groups_list[[changes$tidx[i]+1]]
-    n_groups_next <- changes$n_groups_next[i]
-    n_groups_curr <- changes$n_groups_curr[i]
-
-    #if there are only 2 groups at the start, then name them A and B
-    if(n_groups_curr==2){
-      changes$group_A_idxs[i] <- groups_curr[1]
-      changes$group_B_idxs[i] <- groups_curr[2]
-    }
-
-    #if there are more than 2 groups, need to figure out which one changed
-    if(n_groups_curr > 2){
-      matched_groups <- c()
-      for(j in 1:n_groups_curr){
-        matched <- F
-        for(k in 1:n_groups_next){
-          if(setequal(groups_curr[[j]], groups_next[[k]])){
-            matched <- T
-          }
-        }
-        if(matched){
-          matched_groups <- c(matched_groups, j)
-        }
-      }
-      unmatched_groups <- setdiff(1:n_groups_curr, matched_groups)
-      if(length(unmatched_groups)==2){
-        changes$group_A_idxs[i] <- groups_curr[unmatched_groups[1]]
-        changes$group_B_idxs[i] <- groups_curr[unmatched_groups[2]]
-      }else{
-        warning(paste('Could not identify unambiguously subgroups for event',i,
-                      'due to more than 2 unmatched subgroups'))
-      }
-
+  
+  events_detected <- data.frame()
+  for(i in 1:length(all_events_info)){
+    if(all_events_info[[i]]$event_type %in% c('fission','fusion')){
+      row <- data.frame(event_idx = i, t = all_events_info[[i]]$t, event_type = all_events_info[[i]]$event_type, 
+                        n_groups_before = all_events_info[[i]]$n_groups_before, 
+                        n_groups_after = all_events_info[[i]]$n_groups_after)
+      events_detected <- rbind(events_detected, row)
     }
   }
-
-  #get names if not null
-  if(!is.null(names)){
-    for(i in c(fissions,fusions)){
-      changes$group_A[i] <- list(names[changes$group_A_idxs[i][[1]]])
-      changes$group_B[i] <- list(names[changes$group_B_idxs[i][[1]]])
-    }
-  }
-
-  #final events dataframe (call it events_detected)
-  events_detected <- changes[c(fissions, fusions),c('tidx','datetime','event_type','group_A_idxs','group_B_idxs','group_A','group_B')]
-
-  #get number of individuals in each subgroup
-  events_detected$n_A <- sapply(events_detected$group_A_idxs, length)
-  events_detected$n_B <- sapply(events_detected$group_B_idxs, length)
-
-  #sort by time
-  events_detected <- events_detected[order(events_detected$tidx),]
-
-  #add index column
-  events_detected$event_idx <- 1:nrow(events_detected)
-
-  if(verbose){print('Done.')}
 
   #return things
-  out <- list(events_detected = events_detected, groups_list = groups_list, together = together, changes = changes, R_inner = R_inner, R_outer = R_outer)
+  out <- list(events_detected = events_detected, all_events_info = all_events_info, groups_list = groups_list, together = together, R_inner = R_inner, R_outer = R_outer)
   return(out)
 
 }
