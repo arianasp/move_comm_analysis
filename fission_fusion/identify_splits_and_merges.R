@@ -449,7 +449,6 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
     
     
     events_detected <- rbind(events_detected, row)
-    }
   }
 
   #return things
