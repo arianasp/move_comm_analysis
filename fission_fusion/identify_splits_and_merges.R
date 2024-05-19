@@ -213,7 +213,6 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
     for(i in seq(1,max_group_id)){
       groups_list[[t]][[i]] <- which(groups[,t]==i)
     }
-
   }
 
   #Identifying changes in group membership in consecutive time steps
@@ -248,7 +247,6 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
     }
   }
   
-  #NEW STUFF
   #for each time when the subgrouping patterns changed...
   all_events_info <- list()
   event_idx <- 1
@@ -443,10 +441,9 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
       for(j in 1:n_groups_before){
         row[,paste('group',LETTERS[j],'idxs',sep='_')] <- all_events_info[[i]]$groups_before[j]
         row[,paste('group',LETTERS[j],sep='_')] <- list(list(c(names[unlist(all_events_info[[i]]$groups_before[j])])))
+        row[,paste('n',LETTERS[j],sep='_')] <- length(all_events_info[[i]]$groups_before[j][[1]][[1]])
       }
     }
-    
-    
     
     events_detected <- rbind(events_detected, row)
   }
