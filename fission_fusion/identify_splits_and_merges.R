@@ -52,8 +52,9 @@ library(dbscan)
 #     $group_A_idxs, $group_B_idxs, $group_C_idxs, etc.: individual idxs of subgroup members
 #     $group_A, $group_B, $group_C, etc.: names of subgroup members
 #     $n_A, $n_B, $n_C etc.: number of individuals in each subgroup
+#     $n_big_group: number of individuals in the big group (original group for fissions, subseq group for fusions)
 #       NOTE: big_group_idxs, big_group, group_A_idxs etc., 
-#       group_A etc. n_A etc. are set to NA for shuffles... 
+#       group_A etc. n_A etc. and n_big_group are set to NA for shuffles... 
 #       you can get more detailed info for shuffles from all_events_info object) 
 #   out$all_events_info: list of information about all fission-fusion (or shuffle) 
 #     events. all_events_info[[i]] contains the following info for event i:
@@ -424,6 +425,7 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
     for(j in 1:max_n_subgroups){
       row[paste('n',LETTERS[j], sep = '_')] <- NA
     }
+    row$n_big_group <- NA
     
     if(event_type == 'fission'){
       row$big_group_idxs <- all_events_info[[i]]$groups_before[[1]]
@@ -433,6 +435,7 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
         row[,paste('group',LETTERS[j],sep='_')] <- list(list(c(names[unlist(all_events_info[[i]]$groups_after[j])])))
         row[,paste('n',LETTERS[j],sep='_')] <- length(all_events_info[[i]]$groups_after[j][[1]][[1]])
       }
+      row$n_big_group <- length(row$big_group_idxs[[1]])
     }
     
     if(event_type == 'fusion'){
@@ -443,7 +446,10 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
         row[,paste('group',LETTERS[j],sep='_')] <- list(list(c(names[unlist(all_events_info[[i]]$groups_before[j])])))
         row[,paste('n',LETTERS[j],sep='_')] <- length(all_events_info[[i]]$groups_before[j][[1]][[1]])
       }
+      row$n_big_group <- length(row$big_group_idxs[[1]])
     }
+    
+    
     
     events_detected <- rbind(events_detected, row)
   }
