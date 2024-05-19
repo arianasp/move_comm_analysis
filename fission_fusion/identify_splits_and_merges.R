@@ -40,19 +40,36 @@ library(dbscan)
 # break_by_day: whether to break up data by date (boolean)
 #OUTPUTS:
 # out: a list of outputs containing
-#   out$events_detected: data frame with info on detected fissions and fusions.
+#   out$events_detected: data frame with info on detected fissions and fusions, 
+#   and limited info for shuffles
+#     $event_idx: unique id number of the event
 #     $tidx: (initial) time index of the event
-#     $event_type: "fission" or "fusion"
-#     $group_A_idxs, $group_B_idxs: individual idxs of subgroup members
-#     $group_A, $group_B: first 3 letters of names of subgroup members
-#     $n_A, n_B: number of individuals in each subgroup
+#     $event_type: "fission" or "fusion" or "shuffle
+#     $n_groups_before: number of groups prior to the event
+#     $n_groups_after: number of groups after the event
+#     $big_group_idxs: indexes of all the individuals involved in the event
+#     $big_group: names of all the individuals involved in the event
+#     $group_A_idxs, $group_B_idxs, $group_C_idxs, etc.: individual idxs of subgroup members
+#     $group_A, $group_B, $group_C, etc.: names of subgroup members
+#     $n_A, $n_B, $n_C etc.: number of individuals in each subgroup
+#       NOTE: big_group_idxs, big_group, group_A_idxs etc., 
+#       group_A etc. n_A etc. are set to NA for shuffles... 
+#       you can get more detailed info for shuffles from all_events_info object) 
+#   out$all_events_info: list of information about all fission-fusion (or shuffle) 
+#     events. all_events_info[[i]] contains the following info for event i:
+#     $t: time index of the event
+#     $groups_before: [list of lists] list of groups before the event (at time t)
+#     $groups_after: [list of lists] list of groups after the event (at time t + 1)
+#     $event_type: [character] fission, fusion, or shuffle
+#     $n_groups_before: number of groups before the event
+#     $n_groups_after: number of groups after the event
 #   out$groups_list: list of subgroups in each timestep
 #     groups_list[[t]] gives a list of the subgroups
 #     groups_list[[t]][[1]] gives the vector of the first subgroup, etc.
 #   out$together: [n_inds x n_inds x n_times matrix] of whether individuals are
 #     connected (1) or not (0) or unknown (NA)
-#   changes: data frame containing all the subgroups membership changes (not
-#     just ones identified as fissions or fusions)
+#   out$R_inner: inner radius used in the computations
+#   out$R_outer: outer radius used in the computations
 identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = ts, breaks = c(1, length(ts)+1), names = NULL, break_by_day = F, verbose = T){
 
   #----Identify subgroups at each point
@@ -381,13 +398,57 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
     }
   }
   
+  #get maximum number of subgroups during fissions or fusions
+  n_subgroups <- rep(NA, length(all_events_info))
+  for(i in 1:length(all_events_info)){
+    n_subgroups[i] <- max(all_events_info[[i]]$n_groups_before, all_events_info[[i]]$n_groups_after)
+  }
+  max_n_subgroups <- max(n_subgroups, na.rm=T)
+  
   events_detected <- data.frame()
   for(i in 1:length(all_events_info)){
-    if(all_events_info[[i]]$event_type %in% c('fission','fusion')){
-      row <- data.frame(event_idx = i, t = all_events_info[[i]]$t, event_type = all_events_info[[i]]$event_type, 
-                        n_groups_before = all_events_info[[i]]$n_groups_before, 
-                        n_groups_after = all_events_info[[i]]$n_groups_after)
-      events_detected <- rbind(events_detected, row)
+    event_type <- all_events_info[[i]]$event_type
+    n_groups_before <- all_events_info[[i]]$n_groups_before
+    n_groups_after <- all_events_info[[i]]$n_groups_after
+    row <- data.frame(event_idx = i, 
+                      tidx = all_events_info[[i]]$t, 
+                      event_type = all_events_info[[i]]$event_type,
+                      n_groups_before = n_groups_before, 
+                      n_groups_after = n_groups_after)
+    row$big_group_idxs <- list(c(NA))
+    row$big_group <- list(c(NA))
+    for(j in 1:max_n_subgroups){
+      row[paste('group',LETTERS[j],'idxs',sep='_')] <- list(c(NA))
+    }
+    for(j in 1:max_n_subgroups){
+      row[paste('group',LETTERS[j],sep='_')] <- list(c(NA))
+    }
+    for(j in 1:max_n_subgroups){
+      row[paste('n',LETTERS[j], sep = '_')] <- NA
+    }
+    
+    if(event_type == 'fission'){
+      row$big_group_idxs <- all_events_info[[i]]$groups_before[[1]]
+      row$big_group <- list(names[unlist(all_events_info[[i]]$groups_before[[1]])])
+      for(j in 1:n_groups_after){
+        row[,paste('group',LETTERS[j],'idxs',sep='_')] <- all_events_info[[i]]$groups_after[j]
+        row[,paste('group',LETTERS[j],sep='_')] <- list(list(c(names[unlist(all_events_info[[i]]$groups_after[j])])))
+        row[,paste('n',LETTERS[j],sep='_')] <- length(all_events_info[[i]]$groups_after[j][[1]][[1]])
+      }
+    }
+    
+    if(event_type == 'fusion'){
+      row$big_group_idxs <- all_events_info[[i]]$groups_after[[1]]
+      row$big_group <- list(names[unlist(all_events_info[[i]]$groups_after[[1]])])
+      for(j in 1:n_groups_before){
+        row[,paste('group',LETTERS[j],'idxs',sep='_')] <- all_events_info[[i]]$groups_before[j]
+        row[,paste('group',LETTERS[j],sep='_')] <- list(list(c(names[unlist(all_events_info[[i]]$groups_before[j])])))
+      }
+    }
+    
+    
+    
+    events_detected <- rbind(events_detected, row)
     }
   }
 
