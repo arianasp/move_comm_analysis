@@ -275,26 +275,9 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
     }
     
     #remove any now-empty groups from groups_curr and groups_next
-    g <- 1
-    gmax <- length(groups_curr)
-    while(g <= gmax){
-      if(length(groups_curr[[g]])==0){
-        groups_curr[[g]] <- NULL
-        g <- g - 1
-        gmax <- gmax - 1
-      }
-      g <- g + 1
-    }
-    g <- 1
-    gmax <- length(groups_next)
-    while(g <= gmax){
-      if(length(groups_next[[g]])==0){
-        groups_next[[g]] <- NULL
-        g <- g - 1
-        gmax <- gmax - 1
-      }
-      g <- g + 1
-    }
+    groups_curr[!unlist(lapply(groups_curr, length))] <- NULL
+    groups_next[!unlist(lapply(groups_next, length))] <- NULL
+    
     
     #find sets of connected groups across the current and future timestep
     #construct a directed network connection_net[i,j] where the rows represent groups in the 
