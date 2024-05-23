@@ -226,35 +226,17 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
   }
 
   #Identifying changes in group membership in consecutive time steps
-
   if(verbose){print('Identifying changes in group membership')}
   event_times <- c()
   for(d in 1:(length(breaks)-1)){
     t_day <- breaks[d]:(breaks[d+1]-1)
     for(t in t_day[1:(length(t_day)-1)]){
-      groups_curr <- groups_list[[t]]
-      groups_next <- groups_list[[t+1]]
-      ## If this or next timestep have no groups, skip
-      if(sum(!is.na(groups_curr))==0 | sum(!is.na(groups_next))==0){
+      
+      if(length(groups_list[[t]])==0 | length(groups_list[[t+1]])==0){
         next
       }
-      n_groups_curr <- length(groups_curr)
-      n_groups_next <- length(groups_next)
-      matches <- rep(F, n_groups_curr)
-      ## Identify groups in next timestep that are unchanged from current groups
-      for(i in 1:n_groups_curr){
-        group_curr <- groups_curr[[i]]
-        matched <- F
-        for(j in 1:n_groups_next){
-          group_next <- groups_next[[j]]
-          if(setequal(group_curr,group_next)){
-            matched <- T
-          }
-        }
-        matches[i] <- matched
-      }
-      ## If any groups don't have matches, store this time as a time in which a change event occurred
-      if(sum(matches)<n_groups_curr){
+      ## If any groups arent present in next step, store this time as a time in which a change event occurred
+      if(!all(groups_list[[t]] %in% groups_list[[t+1]])){
         event_times <- c(event_times, t)
       }
     }
