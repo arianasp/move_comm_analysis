@@ -469,7 +469,7 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
   }
 
   #return things
-  out <- list(events_detected = events_detected, all_events_info = all_events_info, groups_list = groups_list, group_matrix = groups, together = together, R_inner = R_inner, R_outer = R_outer)
+  out <- list(events_detected = events_detected, all_events_info = all_events_info, groups_list = groups_list, groups = groups, together = together, R_inner = R_inner, R_outer = R_outer)
   return(out)
 
 }
