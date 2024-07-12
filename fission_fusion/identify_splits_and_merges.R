@@ -256,17 +256,17 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
     #remove any individuals who are not present in one or the other timestep from both timesteps
     inds_present_curr <- unlist(groups_curr)
     inds_present_next <- unlist(groups_next)
-    inds_to_remove <- setdiff(inds_present_curr, inds_present_next) 
+    inds_to_remove <- unique(c(setdiff(inds_present_curr, inds_present_next), setdiff(inds_present_next, inds_present_curr)))
     if(length(inds_to_remove)>0){
       for(g in 1:length(groups_curr)){
-        for(i in 1:length(groups_curr[[g]])){
+        for(i in seq(length(groups_curr[[g]]), 1, -1)){
           if(groups_curr[[g]][i] %in% inds_to_remove){
             groups_curr[[g]] <- groups_curr[[g]][-i]
           }
         }
       }
       for(g in 1:length(groups_next)){
-        for(i in 1:length(groups_next[[g]])){
+        for(i in seq(length(groups_next[[g]]), 1, -1)){
           if(groups_next[[g]][i] %in% inds_to_remove){
             groups_next[[g]] <- groups_next[[g]][-i]
           }
@@ -278,14 +278,18 @@ identify_splits_and_merges <- function(R_inner, R_outer, xs = xs, ys = ys, ts = 
     groups_curr[!unlist(lapply(groups_curr, length))] <- NULL
     groups_next[!unlist(lapply(groups_next, length))] <- NULL
     
+    #if there are no more groups after removing individuals, go to the next time index
+    n_groups_curr <- length(groups_curr)
+    n_groups_next <- length(groups_next)
+    if(n_groups_curr == 0){next}
+    if(n_groups_next == 0){next}
     
     #find sets of connected groups across the current and future timestep
     #construct a directed network connection_net[i,j] where the rows represent groups in the 
     #current timestep and the cols represent groups in the next timestep. Define
     #connection_net[i,j] = 1 if group i from the current timestep and group j from the next
     #timestep share a member, and 0 otherwise. 
-    n_groups_curr <- length(groups_curr)
-    n_groups_next <- length(groups_next)
+    
     connection_net <- matrix(F, nrow = n_groups_curr, ncol = n_groups_next)
     for(i in 1:n_groups_curr){
       for(j in 1:n_groups_next){
