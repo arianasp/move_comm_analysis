@@ -143,7 +143,17 @@ fracs <- freqs / sum(freqs) * 100
 barplot(fracs, names.arg = names(freqs), col = cols, border = cols, xlab = 'Call type', ylab = 'Percentage')
 
 #transition matrix (normalized)
-image.plot(t(transition_matrix_norm), col = viridis(256), xaxt = 'n', yaxt = 'n', xlab = 'First call', ylab = 'P(second call | first call)')
+#image.plot(t(transition_matrix_norm), col = viridis(256), xaxt = 'n', yaxt = 'n', xlab = 'First call', ylab = 'P(second call | first call)')
+#axis(1, at = seq(0,1,length.out=n_calls), labels = call_types)
+#axis(2, at = seq(0,1,length.out=n_calls), labels = call_types)
+
+#----under and over representation of call transitions
+transition_matrix_rand_mean <- apply(transition_matrices_rand, MARGIN = c(1,2), FUN = mean)
+transition_matrix_rand_upper <- apply(transition_matrices_rand, MARGIN = c(1,2), FUN = function(x){return(quantile(x, 0.975, na.rm=T))})
+transition_matrix_rand_lower <- apply(transition_matrices_rand, MARGIN = c(1,2), FUN = function(x){return(quantile(x, 0.025, na.rm=T))})
+log_ratios <- log(transition_matrix / transition_matrix_rand_mean)
+colpal <- colorRampPalette(c('purple','white','red'))
+image.plot(t(log_ratios), col = colpal(256), xaxt = 'n', yaxt = 'n', xlab = 'First call', ylab = 'Second call',zlim=c(-2.5,2.5))
 axis(1, at = seq(0,1,length.out=n_calls), labels = call_types)
 axis(2, at = seq(0,1,length.out=n_calls), labels = call_types)
 
@@ -179,12 +189,4 @@ for(i in 1:n_calls){
 axis(side = 2, at = seq(0.5,n_calls,1), labels = call_types, las = 2)
 dev.off()
 
-#----under and over representation of call transitions
-par(mfrow=c(1,1))
-transition_matrix_rand_mean <- apply(transition_matrices_rand, MARGIN = c(1,2), FUN = mean)
-log_ratios <- log(transition_matrix / transition_matrix_rand_mean)
-colpal <- colorRampPalette(c('red','white','blue'))
-image.plot(t(log_ratios), col = colpal(256), xaxt = 'n', yaxt = 'n', xlab = 'First call', ylab = 'Second call')
-axis(1, at = seq(0,1,length.out=n_calls), labels = call_types)
-axis(2, at = seq(0,1,length.out=n_calls), labels = call_types)
 
